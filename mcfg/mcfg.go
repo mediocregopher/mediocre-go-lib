@@ -130,9 +130,14 @@ func New() *Cfg {
 }
 
 func (c *Cfg) populateParams(src Source) error {
-	pvs, err := src.Parse(c)
-	if err != nil {
-		return err
+	// we allow for nil Source here for tests
+	// TODO make Source stub type which tests could use here instead
+	var pvs []ParamValue
+	if src != nil {
+		var err error
+		if pvs, err = src.Parse(c); err != nil {
+			return err
+		}
 	}
 
 	// first dedupe the params. We use this param struct as the key by which to
@@ -190,6 +195,16 @@ func (c *Cfg) populateParams(src Source) error {
 	return nil
 }
 
+func (c *Cfg) runPreBlock(ctx context.Context, src Source) error {
+	if err := c.populateParams(src); err != nil {
+		return err
+	}
+
+	startCtx, cancel := context.WithTimeout(ctx, c.StartTimeout)
+	defer cancel()
+	return c.startHooks(startCtx)
+}
+
 // Run blocks while performing all steps of a Cfg run. The steps, in order, are;
 // * Populate all configuration parameters
 // * Recursively perform Start hooks, depth first
@@ -202,14 +217,7 @@ func (c *Cfg) populateParams(src Source) error {
 // proper cleanup. If you care about that sort of thing you'll need to handle it
 // yourself.
 func (c *Cfg) Run(ctx context.Context, src Source) error {
-	if err := c.populateParams(src); err != nil {
-		return err
-	}
-
-	startCtx, cancel := context.WithTimeout(ctx, c.StartTimeout)
-	err := c.startHooks(startCtx)
-	cancel()
-	if err != nil {
+	if err := c.runPreBlock(ctx, src); err != nil {
 		return err
 	}
 
@@ -218,6 +226,16 @@ func (c *Cfg) Run(ctx context.Context, src Source) error {
 	stopCtx, cancel := context.WithTimeout(context.Background(), c.StopTimeout)
 	defer cancel()
 	return c.stopHooks(stopCtx)
+}
+
+// TestRun is like Run, except it's intended to only be used during tests to
+// initialize other entities which are going to actually be tested. It assumes
+// all default configuration param values, and will return after the Start hook
+// has completed. It will panic on any errors.
+func (c *Cfg) TestRun() {
+	if err := c.runPreBlock(context.Background(), nil); err != nil {
+		panic(err)
+	}
 }
 
 func (c *Cfg) startHooks(ctx context.Context) error {
