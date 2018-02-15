@@ -98,17 +98,18 @@ func LevelFromString(ls string) (Level, error) {
 // KVer is used to provide context to a log entry in the form of a dynamic set
 // of key/value pairs which can be different for every entry.
 //
-// Each returned map should be modifiable.
+// Each returned KV should be modifiable.
 type KVer interface {
-	KV() map[string]interface{}
+	KV() KV
 }
 
-// KV is a simple and convenient implementation of KVer
+// KV is a set of key/value pairs which provides context for a log entry by a
+// KVer. KV is itself also a KVer.
 type KV map[string]interface{}
 
-// KV implements the KVer method by returning a copy of the casted KV
-func (kv KV) KV() map[string]interface{} {
-	nkv := make(map[string]interface{}, len(kv))
+// KV implements the KVer method by returning a copy of the KV
+func (kv KV) KV() KV {
+	nkv := make(KV, len(kv))
 	for k, v := range kv {
 		nkv[k] = v
 	}
