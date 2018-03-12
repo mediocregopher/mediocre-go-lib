@@ -18,8 +18,7 @@ func TestUUID(t *T) {
 		this := NewUUID(thisT)
 
 		// basic
-		assert.True(t, strings.HasPrefix(this.String(), uuidV0Prefix))
-		assert.Len(t, this.String(), uuidV0Len)
+		assert.True(t, strings.HasPrefix(this.String(), uuidV0))
 
 		// comparisons with prev
 		assert.False(t, prev.Equal(this))
@@ -35,6 +34,6 @@ func TestUUID(t *T) {
 		require.NoError(t, err)
 		var this2 UUID
 		require.NoError(t, this2.UnmarshalText(thisStr))
-		assert.True(t, this.Equal(this2))
+		assert.True(t, this.Equal(this2), "this:%q this2:%q", this, this2)
 	}
 }

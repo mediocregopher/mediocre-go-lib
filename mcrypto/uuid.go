@@ -13,10 +13,7 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 )
 
-const (
-	uuidV0Prefix = "0u"
-	uuidV0Len    = 34 // prefix:2 + hexEncodedLen(time:8 + random:8)
-)
+var errMalformedUUID = errors.New("malformed UUID string")
 
 // UUID is a universally unique identifier which embeds within it a timestamp.
 //
@@ -43,7 +40,7 @@ func NewUUID(t time.Time) UUID {
 		panic(err)
 	}
 	return UUID{
-		str: uuidV0Prefix + hex.EncodeToString(b),
+		str: uuidV0 + hex.EncodeToString(b),
 	}
 }
 
@@ -80,7 +77,7 @@ func (u UUID) MarshalText() ([]byte, error) {
 // UnmarshalText implements the method for the encoding.TextUnmarshaler
 // interface
 func (u *UUID) UnmarshalText(b []byte) error {
-	if !bytes.HasPrefix(b, []byte(uuidV0Prefix)) || len(b) != uuidV0Len {
+	if !bytes.HasPrefix(b, []byte(uuidV0)) || len(b) != len(uuidV0)+32 {
 		err := errors.New("malformed uuid string")
 		return mlog.ErrWithKV(err, mlog.KV{"uuidStr": string(b)})
 	}
