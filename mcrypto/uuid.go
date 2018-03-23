@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
@@ -25,11 +24,7 @@ var errMalformedUUID = errors.New("malformed UUID string")
 // The string form of UUIDs (returned by String or MarshalText) are
 // lexigraphically order-able by their embedded timestamp.
 type UUID struct {
-	// the UUID type is actually just an opaque wrapper. For the most part
-	// UUID's don't ever need the information in them (like their timestamp)
-	// unpacked, so it's more efficient to just keep the string and unpack
-	// on-the-fly
-	str string
+	b []byte
 }
 
 // NewUUID populates and returns a new UUID instance which embeds the given time
@@ -39,28 +34,21 @@ func NewUUID(t time.Time) UUID {
 	if _, err := rand.Read(b[8:]); err != nil {
 		panic(err)
 	}
-	return UUID{
-		str: uuidV0 + hex.EncodeToString(b),
-	}
+	return UUID{b: b}
 }
 
 func (u UUID) String() string {
-	return u.str
+	return uuidV0 + hex.EncodeToString(u.b)
 }
 
 // Equal returns whether or not the two UUID's are the same value
 func (u UUID) Equal(u2 UUID) bool {
-	return u.str == u2.str
+	return bytes.Equal(u.b, u2.b)
 }
 
 // Time unpacks and returns the timestamp embedded in the UUID
 func (u UUID) Time() time.Time {
-	b, err := hex.DecodeString(u.str[2:])
-	if err != nil {
-		// once a UUID has been created it should always be valid
-		panic(fmt.Sprintf("malformed UUID: %q", u.str))
-	}
-	unixNano := int64(binary.BigEndian.Uint64(b[:8]))
+	unixNano := int64(binary.BigEndian.Uint64(u.b[:8]))
 	return time.Unix(0, unixNano).Local()
 }
 
@@ -77,10 +65,16 @@ func (u UUID) MarshalText() ([]byte, error) {
 // UnmarshalText implements the method for the encoding.TextUnmarshaler
 // interface
 func (u *UUID) UnmarshalText(b []byte) error {
-	if !bytes.HasPrefix(b, []byte(uuidV0)) || len(b) != len(uuidV0)+32 {
-		return mlog.ErrWithKV(errMalformedUUID, mlog.KV{"uuidStr": string(b)})
+	str := string(b)
+	strEnc, ok := stripPrefix(str, uuidV0)
+	if !ok || len(strEnc) != hex.EncodedLen(16) {
+		return mlog.ErrWithKV(errMalformedUUID, mlog.KV{"uuidStr": str})
 	}
-	u.str = string(b)
+	b, err := hex.DecodeString(strEnc)
+	if err != nil {
+		return mlog.ErrWithKV(err, mlog.KV{"uuidStr": str})
+	}
+	u.b = b
 	return nil
 }
 
