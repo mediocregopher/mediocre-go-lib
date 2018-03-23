@@ -78,8 +78,7 @@ func (u UUID) MarshalText() ([]byte, error) {
 // interface
 func (u *UUID) UnmarshalText(b []byte) error {
 	if !bytes.HasPrefix(b, []byte(uuidV0)) || len(b) != len(uuidV0)+32 {
-		err := errors.New("malformed uuid string")
-		return mlog.ErrWithKV(err, mlog.KV{"uuidStr": string(b)})
+		return mlog.ErrWithKV(errMalformedUUID, mlog.KV{"uuidStr": string(b)})
 	}
 	u.str = string(b)
 	return nil

@@ -7,10 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
-	"hash"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
@@ -25,23 +24,131 @@ var (
 	ErrInvalidSig = errors.New("invalid signature")
 )
 
+// Signature marshals/unmarshals an actual signature, produced internally by a
+// Signer, along with the timestamp the signing took place and a random salt.
+//
+// All signatures produced in this package will have had the timestamp and salt
+// included in the signature's input data, and so are also checked by the
+// Verifier.
+type Signature struct {
+	sig, salt []byte // neither of these should ever be more than 255 bytes long
+	t         time.Time
+}
+
+// Time returns the timestamp the Signature was generated at
+func (s Signature) Time() time.Time {
+	return s.t
+}
+
+func (s Signature) String() string {
+	// ts:8 + saltHeader:1 + salt + sigHeader:1 + sig
+	b := make([]byte, 10+len(s.salt)+len(s.sig))
+	// It will be year 2286 before the nano doesn't fit in uint64
+	binary.BigEndian.PutUint64(b, uint64(s.t.UnixNano()))
+	ptr := 8
+	b[ptr], ptr = uint8(len(s.salt)), ptr+1
+	ptr += copy(b[ptr:], s.salt)
+	b[ptr], ptr = uint8(len(s.sig)), ptr+1
+	copy(b[ptr:], s.sig)
+	return sigV0 + hex.EncodeToString(b)
+}
+
+// KV implements the method for the mlog.KVer interface
+func (s Signature) KV() mlog.KV {
+	return mlog.KV{"sig": s.String()}
+}
+
+// MarshalText implements the method for the encoding.TextMarshaler interface
+func (s Signature) MarshalText() ([]byte, error) {
+	return []byte(s.String()), nil
+}
+
+// UnmarshalText implements the method for the encoding.TextUnmarshaler
+// interface
+func (s *Signature) UnmarshalText(b []byte) error {
+	str := string(b)
+	strEnc, ok := stripPrefix(str, sigV0)
+	if !ok || len(strEnc) < hex.EncodedLen(10) {
+		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sigStr": str})
+	}
+
+	b, err := hex.DecodeString(strEnc)
+	if err != nil {
+		return mlog.ErrWithKV(err, mlog.KV{"sigStr": str})
+	}
+
+	unixNano, b := int64(binary.BigEndian.Uint64(b[:8])), b[8:]
+	s.t = time.Unix(0, unixNano).Local()
+
+	readBytes := func() []byte {
+		if err != nil {
+			return nil
+		} else if len(b) < 1+int(b[0]) {
+			err = mlog.ErrWithKV(errMalformedSig, mlog.KV{"sigStr": str})
+			return nil
+		}
+		out := b[1 : 1+b[0]]
+		b = b[1+b[0]:]
+		return out
+	}
+
+	s.salt = readBytes()
+	s.sig = readBytes()
+	return err
+}
+
+// MarshalJSON implements the method for the json.Marshaler interface
+func (s Signature) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
+// UnmarshalJSON implements the method for the json.Unmarshaler interface
+func (s *Signature) UnmarshalJSON(b []byte) error {
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		return err
+	}
+	return s.UnmarshalText([]byte(str))
+}
+
+// returns an io.Reader which will first read out information about the
+// Signature which is going to be generated for the data, and then the data from
+// the io.Reader itself. When used in conjunction with the Signer/Verifier's
+// hashing algorithm this ensures that the other data encoded in the Signature
+// (the time and salt) are also encompassed in the sig.
+func sigPrefixReader(r io.Reader, sigLen uint8, salt []byte, t time.Time) io.Reader {
+	// ts:8 + saltHeader:1 + salt + sigLen:1
+	b := make([]byte, 10+len(salt))
+	binary.BigEndian.PutUint64(b, uint64(t.UnixNano()))
+	b[9] = uint8(len(salt))
+	copy(b[9:9+len(salt)], salt)
+	b[9+len(salt)] = sigLen
+	return io.MultiReader(bytes.NewBuffer(b), r)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Signer is some entity which can generate signatures for arbitrary data and
 // can later verify those signatures
 type Signer interface {
-	sign(io.Reader) (string, error)
+	sign(io.Reader) (Signature, error)
+}
 
-	// returns an error if io.Reader returns one ever, or if the signature
+// Verifier is some entity which can verify Signatures produced by a Signer for
+// some arbitrary data
+type Verifier interface {
+	// returns an error if io.Reader returns one ever, or if the Signature
 	// couldn't be verified
-	verify(string, io.Reader) error
+	verify(Signature, io.Reader) error
 }
 
 // Sign reads all data from the io.Reader and signs it using the given Signer
-func Sign(s Signer, r io.Reader) (string, error) {
+func Sign(s Signer, r io.Reader) (Signature, error) {
 	return s.sign(r)
 }
 
-// SignBytes uses the Signer to generate a signature for the given []bytes
-func SignBytes(s Signer, b []byte) string {
+// SignBytes uses the Signer to generate a Signature for the given []bytes
+func SignBytes(s Signer, b []byte) Signature {
 	sig, err := s.sign(bytes.NewBuffer(b))
 	if err != nil {
 		panic(err)
@@ -49,219 +156,104 @@ func SignBytes(s Signer, b []byte) string {
 	return sig
 }
 
-// SignString uses the Signer to generate a signature for the given string
-func SignString(s Signer, in string) string {
+// SignString uses the Signer to generate a Signature for the given string
+func SignString(s Signer, in string) Signature {
 	return SignBytes(s, []byte(in))
 }
 
-// Verify reads all data from the io.Reader and uses the Signer to verify that
-// the signature is for that data.
+// Verify reads all data from the io.Reader and uses the Verifier to verify that
+// the Signature is for that data.
 //
 // Returns any errors from io.Reader, or ErrInvalidSig (use merry.Is(err,
 // mcrypto.ErrInvalidSig) to check).
-func Verify(s Signer, sig string, r io.Reader) error {
-	return s.verify(sig, r)
+func Verify(v Verifier, s Signature, r io.Reader) error {
+	return v.verify(s, r)
 }
 
-// VerifyBytes uses the Signer to verify that the signature is for the given
+// VerifyBytes uses the Verifier to verify that the Signature is for the given
 // []bytes.
 //
 // Returns any errors from io.Reader, or ErrInvalidSig (use merry.Is(err,
 // mcrypto.ErrInvalidSig) to check).
-func VerifyBytes(s Signer, sig string, b []byte) error {
-	return s.verify(sig, bytes.NewBuffer(b))
+func VerifyBytes(v Verifier, s Signature, b []byte) error {
+	return v.verify(s, bytes.NewBuffer(b))
 }
 
-// VerifyString uses the Signer to verify that the signature is for the given
+// VerifyString uses the Verifier to verify that the Signature is for the given
 // string.
 //
 // Returns any errors from io.Reader, or ErrInvalidSig (use merry.Is(err,
 // mcrypto.ErrInvalidSig) to check).
-func VerifyString(s Signer, sig, in string) error {
-	return VerifyBytes(s, sig, []byte(in))
+func VerifyString(v Verifier, s Signature, in string) error {
+	return VerifyBytes(v, s, []byte(in))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type signer struct {
+type signVerifier struct {
 	outSize uint8 // in bytes, shouldn't be more than 32, cause sha256
 	secret  []byte
-}
-
-// NewSigner returns a Signer instance which will use the given secret to sign
-// and verify all signatures. The signatures generated by this Signer have no
-// expiration
-func NewSigner(secret []byte) Signer {
-	return signer{outSize: 20, secret: secret}
-}
-
-// NewWeakSigner returns a Signer, similar to how NewSigner does. The signatures
-// generated by this Signer will be smaller in text size, and therefore weaker,
-// but are still fine for most applications.
-//
-// The Signers returned by both NewSigner and NewWeakSigner can verify
-// each-other's signatures, as long as the secret is the same.
-func NewWeakSigner(secret []byte) Signer {
-	return signer{outSize: 8, secret: secret}
-}
-
-func (s signer) signRaw(r io.Reader) (hash.Hash, error) {
-	h := hmac.New(sha256.New, s.secret)
-	_, err := io.Copy(h, r)
-	return h, err
-}
-
-func (s signer) sign(r io.Reader) (string, error) {
-	h, err := s.signRaw(r)
-	if err != nil {
-		return "", err
-	}
-	b := make([]byte, 1+h.Size())
-	b[0] = s.outSize
-	h.Sum(b[1:1])
-	return sigV0 + hex.EncodeToString(b[:1+int(s.outSize)]), nil
-}
-
-func (s signer) verify(sig string, r io.Reader) error {
-	sig, ok := stripPrefix(sig, sigV0)
-	if !ok || len(sig) < 2 {
-		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sig": sig})
-	}
-	sig = strings.TrimPrefix(sig, sigV0)
-
-	sizeStr, sig := sig[:2], sig[2:]
-	sizeB, err := hex.DecodeString(sizeStr)
-	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sig": sig})
-	}
-
-	size := sizeB[0]
-	if hex.DecodedLen(len(sig)) != int(size) {
-		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sig": sig})
-	}
-
-	sigB, err := hex.DecodeString(sig)
-	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sig": sig})
-	}
-
-	h, err := s.signRaw(r)
-	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sig": sig})
-	}
-
-	if !hmac.Equal(sigB, h.Sum(nil)[:size]) {
-		return mlog.ErrWithKV(ErrInvalidSig, mlog.KV{"sig": sig})
-	}
-
-	return nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type expireSigner struct {
-	s       Signer
-	timeout time.Duration
 
 	// only used during tests
 	testNow time.Time
 }
 
-// ExpireSigner wraps a Signer so that the signatures produced include timestamp
-// information about when the signature was made. That information is then used
-// during verifying to ensure the signature isn't older than the timeout.
-//
-// It is allowed to change the timeout ExpireSigner is initialized with.
-// Previously generated signatures will be verified (or rejected) using the new
-// timeout.
-func ExpireSigner(s Signer, timeout time.Duration) Signer {
-	return expireSigner{s: s, timeout: timeout}
+// NewSignerVerifier returns Signer and Verifier instances which will use the
+// given secret to sign and verify all Signatures
+func NewSignerVerifier(secret []byte) (Signer, Verifier) {
+	sv := signVerifier{outSize: 20, secret: secret}
+	return sv, sv
 }
 
-func (es expireSigner) now() time.Time {
-	if !es.testNow.IsZero() {
-		return es.testNow
+// NewWeakSignerVerifier returns Signer and Verifier instances, similar to how
+// NewSignVerifier does. The Signatures generated by this Signer will be smaller
+// in text size, and therefore weaker, but are still fine for most applications.
+//
+// The Verifiers returned by both NewSignVerifier and NewWeakSignVerifier can
+// verify each-other's signatures, as long as the secret is the same.
+func NewWeakSignerVerifier(secret []byte) (Signer, Verifier) {
+	sv := signVerifier{outSize: 8, secret: secret}
+	return sv, sv
+}
+
+func (sv signVerifier) now() time.Time {
+	if !sv.testNow.IsZero() {
+		return sv.testNow
 	}
 	return time.Now()
 }
 
-func (es expireSigner) sign(r io.Reader) (string, error) {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(es.now().UnixNano()))
-	sig, err := es.s.sign(prefixReader(r, b))
-	return exSigV0 + hex.EncodeToString(b) + sig, err
-}
-
-var exSigTimeLen = hex.EncodedLen(8)
-
-func (es expireSigner) verify(sig string, r io.Reader) error {
-	sig, ok := stripPrefix(sig, exSigV0)
-	if !ok || len(sig) < exSigTimeLen {
-		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sig": sig})
+func (sv signVerifier) signRaw(
+	r io.Reader,
+	sigLen uint8, salt []byte, t time.Time,
+) (
+	[]byte, error,
+) {
+	h := hmac.New(sha256.New, sv.secret)
+	r = sigPrefixReader(r, sigLen, salt, t)
+	if _, err := io.Copy(h, r); err != nil {
+		return nil, err
 	}
-
-	tStr, sig := sig[:exSigTimeLen], sig[exSigTimeLen:]
-	tB, err := hex.DecodeString(tStr)
-	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sig": sig})
-	}
-
-	t := time.Unix(0, int64(binary.BigEndian.Uint64(tB)))
-	if es.now().Sub(t) > es.timeout {
-		return mlog.ErrWithKV(ErrInvalidSig, mlog.KV{"sig": sig})
-	}
-
-	return es.s.verify(sig, prefixReader(r, tB))
+	return h.Sum(nil)[:sigLen], nil
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-type uniqueSigner struct {
-	s        Signer
-	randSize uint8 // in bytes
-}
-
-// UniqueSigner wraps a Signer so that when data is signed some random data is
-// included in the signed data, and that random data is included in the
-// signature as well. This ensures that even for the same input data signatures
-// produced are all unique.
-func UniqueSigner(s Signer) Signer {
-	return uniqueSigner{s: s, randSize: 10}
-}
-
-func (us uniqueSigner) sign(r io.Reader) (string, error) {
-	b := make([]byte, 1+us.randSize)
-	b[0] = us.randSize
-	if _, err := rand.Read(b[1:]); err != nil {
+func (sv signVerifier) sign(r io.Reader) (Signature, error) {
+	salt := make([]byte, 8)
+	if _, err := rand.Read(salt); err != nil {
 		panic(err)
 	}
-	sig, err := us.s.sign(prefixReader(r, b[1:]))
-	return uniqueSigV0 + hex.EncodeToString(b) + sig, err
+
+	t := sv.now()
+	sig, err := sv.signRaw(r, sv.outSize, salt, t)
+	return Signature{sig: sig, salt: salt, t: t}, err
 }
 
-func (us uniqueSigner) verify(sig string, r io.Reader) error {
-	sig, ok := stripPrefix(sig, uniqueSigV0)
-	if !ok || len(sig) < 2 {
-		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sig": sig})
-	}
-
-	sizeStr, sig := sig[:2], sig[2:]
-	sizeB, err := hex.DecodeString(sizeStr)
+func (sv signVerifier) verify(s Signature, r io.Reader) error {
+	sig, err := sv.signRaw(r, uint8(len(s.sig)), s.salt, s.t)
 	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sig": sig})
+		return mlog.ErrWithKV(err, s)
+	} else if !hmac.Equal(sig, s.sig) {
+		return mlog.ErrWithKV(ErrInvalidSig, s)
 	}
-
-	size := sizeB[0]
-	sizeEnc := hex.EncodedLen(int(size))
-	if len(sig) < sizeEnc {
-		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sig": sig})
-	}
-
-	bStr, sig := sig[:sizeEnc], sig[sizeEnc:]
-	b, err := hex.DecodeString(bStr)
-	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sig": sig})
-	}
-
-	return us.s.verify(sig, prefixReader(r, b))
+	return nil
 }
