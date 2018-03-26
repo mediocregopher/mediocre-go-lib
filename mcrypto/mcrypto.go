@@ -7,12 +7,6 @@ import (
 	"strings"
 )
 
-// TODO rather than have the NewSignerVerifier methods, it might be better to
-// have a Secret type, which implements Signer/Verifier. That way when there's
-// Encrypter/Decrypter interfaces then Secret can implement those too, and
-// PublicKey/PrivateKey can implement their respective ones. There'll be a nice
-// symmetry there, rather than having NewEncrypterDecrypter functions.
-
 // Instead of outputing opaque hex garbage, this package opts to add a prefix to
 // the garbage. Each "type" of string returned has its own character which is
 // not found in the hex range (0-9, a-f), and in addition each also has a
