@@ -1,12 +1,9 @@
 // Package mrpc contains types and functionality to facilitate creating RPC
-// interfaces and for making calls against those same interfaces
+// interfaces and for making calls against those same interfaces.
 //
 // This package contains a few fundamental types: Handler, Call, and
 // Client. Together these form the components needed to implement nearly any RPC
 // system.
-//
-// TODO an example of an implementation of these interfaces can be found in the
-// m package
 package mrpc
 
 import (
@@ -34,46 +31,19 @@ func (hf HandlerFunc) ServeRPC(c Call) (interface{}, error) {
 
 // Call is passed into the ServeRPC method and contains all information about
 // the incoming RPC call which is being made
-type Call interface {
-	Context() context.Context
+type Call struct {
+	// Context relating to the call. May contain extra metadata/debug
+	// information, be used for further interaction with the underlying
+	// protocol, or be used for timeout/disconnect cancelation.
+	Context context.Context
 
-	// Method returns the name of the RPC method being called
-	Method() string
+	// The name of the RPC method being called
+	Method string
 
 	// UnmarshalArgs takes in a pointer and unmarshals the RPC call's arguments
 	// into it. The properties of the unmarshaling are dependent on the
-	// underlying implementation of the codec types.
-	UnmarshalArgs(interface{}) error
-}
-
-type call struct {
-	ctx           context.Context
-	method        string
-	unmarshalArgs func(interface{}) error
-}
-
-func (c call) Context() context.Context {
-	return c.ctx
-}
-
-func (c call) Method() string {
-	return c.method
-}
-
-func (c call) UnmarshalArgs(i interface{}) error {
-	return c.unmarshalArgs(i)
-}
-
-// WithContext returns the same Call it's given, but the new Call will return
-// the given context when Context() is called
-func WithContext(c Call, ctx context.Context) Call {
-	return call{ctx: ctx, method: c.Method(), unmarshalArgs: c.UnmarshalArgs}
-}
-
-// WithMethod returns the same Call it's given, but the new Call will return the
-// given method name when Method() is called
-func WithMethod(c Call, method string) Call {
-	return call{ctx: c.Context(), method: method, unmarshalArgs: c.UnmarshalArgs}
+	// underlying implementation of the codec.
+	UnmarshalArgs func(interface{}) error
 }
 
 // Client is an entity which can perform RPC calls against a remote endpoint.
@@ -122,10 +92,10 @@ func ReflectClient(h Handler) Client {
 		method string,
 		args interface{},
 	) error {
-		c := call{
-			ctx:           ctx,
-			method:        method,
-			unmarshalArgs: func(i interface{}) error { return into(i, args) },
+		c := Call{
+			Context:       ctx,
+			Method:        method,
+			UnmarshalArgs: func(i interface{}) error { return into(i, args) },
 		}
 
 		res, err := h.ServeRPC(c)

@@ -23,7 +23,7 @@ func TestReflectClient(t *T) {
 		client := ReflectClient(HandlerFunc(func(c Call) (interface{}, error) {
 			var args argT
 			assert.NoError(t, c.UnmarshalArgs(&args))
-			assert.Equal(t, "foo", c.Method())
+			assert.Equal(t, "foo", c.Method)
 			return resT{Out: args.In}, nil
 		}))
 
@@ -46,7 +46,7 @@ func TestReflectClient(t *T) {
 		client := ReflectClient(HandlerFunc(func(c Call) (interface{}, error) {
 			var args argT
 			assert.NoError(t, c.UnmarshalArgs(&args))
-			assert.Equal(t, "foo", c.Method())
+			assert.Equal(t, "foo", c.Method)
 			return &resT{Out: args.In}, nil
 		}))
 
