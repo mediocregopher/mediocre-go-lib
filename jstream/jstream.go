@@ -116,6 +116,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 )
 
 // byte blob constants
@@ -256,6 +257,43 @@ func (el Element) Stream() (*StreamReader, error) {
 		return nil, err
 	}
 	return el.sr, nil
+}
+
+// Discard reads whatever of this Element's data may be left on the StreamReader
+// it came from and discards it, making the StreamReader ready to have Next call
+// on it again.
+//
+// If the Element is a Byte Blob and is ended with io.EOF, or if the Element is
+// a Stream and is ended with ErrStreamEnded then this returns nil. If either is
+// canceled this also returns nil. All other errors are returned.
+func (el Element) Discard() error {
+	typ, err := el.Type()
+	if err != nil {
+		return err
+	}
+	switch typ {
+	case TypeByteBlob:
+		r, _ := el.Bytes()
+		_, err := io.Copy(ioutil.Discard, r)
+		if err == ErrCanceled {
+			return nil
+		}
+		return err
+	case TypeStream:
+		stream, _ := el.Stream()
+		for {
+			nextEl := stream.Next()
+			if nextEl.Err == ErrStreamEnded || nextEl.Err == ErrCanceled {
+				return nil
+			} else if nextEl.Err != nil {
+				return nextEl.Err
+			} else if err := nextEl.Discard(); err != nil {
+				return err
+			}
+		}
+	default: // TypeJSONValue
+		return nil
+	}
 }
 
 // StreamReader represents a Stream from which Elements may be read using the

@@ -34,11 +34,12 @@ func (cb *cancelBuffer) Read(p []byte) (int, error) {
 
 func TestEncoderDecoder(t *T) {
 	type testCase struct {
-		typ    Type
-		val    interface{}
-		bytes  []byte
-		stream []testCase
-		cancel bool
+		typ     Type
+		val     interface{}
+		bytes   []byte
+		stream  []testCase
+		cancel  bool
+		discard bool
 	}
 
 	var randTestCase func(Type, bool) testCase
@@ -57,8 +58,9 @@ func TestEncoderDecoder(t *T) {
 		}
 
 		tc := testCase{
-			typ:    typ,
-			cancel: cancelable && mtest.Rand.Intn(10) == 0,
+			typ:     typ,
+			cancel:  cancelable && mtest.Rand.Intn(10) == 0,
+			discard: mtest.Rand.Intn(20) == 0,
 		}
 
 		switch typ {
@@ -93,6 +95,11 @@ func TestEncoderDecoder(t *T) {
 		typ, err := el.Type()
 		success = success && assert.NoError(t, err, l...)
 		success = success && assert.Equal(t, tc.typ, typ, l...)
+
+		if tc.discard {
+			success = success && assert.NoError(t, el.Discard())
+			return success
+		}
 
 		switch typ {
 		case TypeJSONValue:
