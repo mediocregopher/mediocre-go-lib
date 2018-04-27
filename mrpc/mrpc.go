@@ -4,6 +4,9 @@
 // This package contains a few fundamental types: Handler, Call, and
 // Client. Together these form the components needed to implement nearly any RPC
 // system.
+//
+// TODO document examples
+// TODO document Debug?
 package mrpc
 
 import (

@@ -14,18 +14,28 @@ import (
 )
 
 // TODO Debug
+// 	- ReqHead
+//		- client encodes into context
+//		- handler decodes from context
+// 	- ResTail
+//		- handler ?
+//		- client ?
+
 // TODO Error?
 // TODO SizeHints
-// TODO it seems like request tail and response head aren't useful nor
-// convenient to use, might be better to leave them out
 
-type headTail struct {
+type debug struct {
 	Debug map[string]map[string]json.RawMessage `json:"debug,omitempty"`
 }
 
 type reqHead struct {
-	headTail
+	debug
 	Method string `json:"method"`
+}
+
+type resTail struct {
+	debug
+	Error interface{} `json:"err,omitempty"`
 }
 
 type ctxVal int
@@ -105,9 +115,7 @@ func HandleCall(
 	// marshalBody is called they will block forever. Probably need to cancel
 	// the context to let them know?
 
-	if err := w.EncodeValue(headTail{}); err != nil {
-		return err
-	} else if err := marshalBody(w, ret); err != nil {
+	if err := marshalBody(w, ret); err != nil {
 		return err
 	}
 
@@ -119,12 +127,11 @@ func HandleCall(
 	// Reading the tail (and maybe discarding the body) should only be done once
 	// marshalBody has finished
 	if !didReadBody {
-		// TODO if this errors then presumably reading the tail will too?
+		// TODO what if this errors?
 		r.Next().Discard()
 	}
-	if err := r.Next().Discard(); err != nil {
-		return err
-	}
+
+	// TODO write response tail
 
 	return nil
 }
