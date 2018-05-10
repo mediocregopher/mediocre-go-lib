@@ -15,38 +15,51 @@ import (
 	"reflect"
 )
 
-// Handler is a type which serves RPC calls. For each incoming Call the ServeRPC
-// method is called, and the return from the method is used as the response. If
-// an error is returned the response return is ignored.
+// Request TODO
+type Request struct {
+	Context context.Context
+
+	// The name of the RPC method being called.
+	Method string
+
+	// Unmarshal takes in a pointer and unmarshals the RPC request's arguments
+	// into it. The properties of the unmarshaling are dependent on the
+	// underlying implementation of the protocol.
+	//
+	// This should only be called within ServeRPC.
+	Unmarshal func(interface{}) error
+}
+
+// ResponseWriter TODO
+type ResponseWriter struct {
+	Context context.Context
+
+	Respond func(interface{})
+	Err     func(error)
+}
+
+// Reponse TODO
+type Response struct {
+	Context   context.Context
+	Unmarshal func(interface{}) error
+	Err       error
+}
+
+// Handler is a type which serves RPC calls. For each incoming Requests the
+// ServeRPC method is called with a ResponseWriter which will write the call's
+// response back to the client.
 type Handler interface {
-	ServeRPC(Call) (interface{}, error)
+	ServeRPC(Request, *ResponseWriter)
 }
 
 // HandlerFunc can be used to wrap an individual function which fits the
 // ServeRPC signature, and use that function as a Handler
-type HandlerFunc func(Call) (interface{}, error)
+type HandlerFunc func(Request, *ResponseWriter)
 
 // ServeRPC implements the method for the Handler interface by calling the
 // underlying function
-func (hf HandlerFunc) ServeRPC(c Call) (interface{}, error) {
-	return hf(c)
-}
-
-// Call is passed into the ServeRPC method and contains all information about
-// the incoming RPC call which is being made
-type Call struct {
-	// Context relating to the call. May contain extra metadata/debug
-	// information, be used for further interaction with the underlying
-	// protocol, or be used for timeout/disconnect cancelation.
-	Context context.Context
-
-	// The name of the RPC method being called
-	Method string
-
-	// UnmarshalArgs takes in a pointer and unmarshals the RPC call's arguments
-	// into it. The properties of the unmarshaling are dependent on the
-	// underlying implementation of the codec.
-	UnmarshalArgs func(interface{}) error
+func (hf HandlerFunc) ServeRPC(r Request, rw *ResponseWriter) {
+	hf(r, rw)
 }
 
 // Client is an entity which can perform RPC calls against a remote endpoint.
@@ -55,29 +68,28 @@ type Call struct {
 // unmarshaled according to Client's implementation. args will be marshaled and
 // sent to the remote endpoint according to Client's implementation.
 type Client interface {
-	CallRPC(ctx context.Context, res interface{}, method string, args interface{}) error
+	CallRPC(ctx context.Context, method string, args interface{}) Response
 }
 
 // ClientFunc can be used to wrap an individual function which fits the CallRPC
 // signature, and use that function as a Client
-type ClientFunc func(context.Context, interface{}, string, interface{}) error
+type ClientFunc func(context.Context, string, interface{}) Response
 
 // CallRPC implements the method for the Client interface by calling the
 // underlying function
 func (cf ClientFunc) CallRPC(
 	ctx context.Context,
-	res interface{},
 	method string,
 	args interface{},
-) error {
-	return cf(ctx, res, method, args)
+) Response {
+	return cf(ctx, method, args)
 }
 
 // ReflectClient returns a Client whose CallRPC method will use reflection to
 // call the given Handler's ServeRPC method directly, using reflect.Value's Set
-// method to copy CallRPC's args parameter into UnmarshalArgs' receiver
-// parameter, and similarly to copy the result from ServeRPC into CallRPC's
-// receiver parameter.
+// method to copy CallRPC's args parameter into the Request's Unmarshal method's
+// receiver parameter, and similarly to copy the result from ServeRPC into
+// the Response's Unmarshal method's receiver parameter.
 func ReflectClient(h Handler) Client {
 	into := func(dst, src interface{}) error {
 		dstV, srcV := reflect.ValueOf(dst), reflect.ValueOf(src)
@@ -91,21 +103,33 @@ func ReflectClient(h Handler) Client {
 
 	return ClientFunc(func(
 		ctx context.Context,
-		resInto interface{},
 		method string,
 		args interface{},
-	) error {
-		c := Call{
-			Context:       ctx,
-			Method:        method,
-			UnmarshalArgs: func(i interface{}) error { return into(i, args) },
+	) Response {
+		req := Request{
+			Context:   ctx,
+			Method:    method,
+			Unmarshal: func(i interface{}) error { return into(i, args) },
+		}
+		var res interface{}
+		var resErr error
+		rw := ResponseWriter{
+			Context: context.Background(),
+			Respond: func(i interface{}) { res = i },
+			Err:     func(err error) { resErr = err },
 		}
 
-		res, err := h.ServeRPC(c)
-		if err != nil {
-			return err
-		}
+		h.ServeRPC(req, &rw)
 
-		return into(resInto, res)
+		return Response{
+			Context: rw.Context,
+			Unmarshal: func(i interface{}) error {
+				if resErr != nil {
+					return resErr
+				}
+				return into(i, res)
+			},
+			Err: resErr,
+		}
 	})
 }

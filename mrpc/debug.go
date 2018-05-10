@@ -27,6 +27,9 @@ func (d Debug) Copy() Debug {
 // Set returns a copy of the Debug instance with the key set to the value within
 // the given namespace.
 func (d Debug) Set(ns, key string, val interface{}) Debug {
+	if d == nil {
+		return Debug{ns: map[string]interface{}{key, val}}
+	}
 	d = d.Copy()
 	if d[ns] == nil {
 		d[ns] = map[string]interface{}{}
