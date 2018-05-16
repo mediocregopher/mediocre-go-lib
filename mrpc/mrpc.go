@@ -15,14 +15,8 @@ import (
 	"reflect"
 )
 
-// TODO Request is making things difficult. It wants to be split into two types,
-// like the Response is, but naming them is annoying. ClientRequest and
-// HandlerRequest? RequestReader? Maybe 4 arguments to Client isn't that much...
-
 // Request describes an RPC request being processed by a Handler
 type Request struct {
-	// Depending on the implementation of Client, Context may be canceled to
-	// indicate the Client has canceled the request.
 	Context context.Context
 
 	// The name of the RPC method being called.
@@ -34,7 +28,7 @@ type Request struct {
 	Unmarshal func(interface{}) error
 
 	// Debugging information being carried with the Request. See Debug's docs
-	// for more on how it is intended to be used
+	// for more on how it is intended to be used.
 	Debug Debug
 }
 
@@ -68,6 +62,9 @@ type Response struct {
 // Handler is a type which serves RPC calls. For each incoming Requests the
 // ServeRPC method is called with a ResponseWriter which will write the call's
 // response back to the client.
+//
+// Any go-routines spawned by ServeRPC should expect to terminate if the
+// Request's Context is canceled
 type Handler interface {
 	ServeRPC(Request, *ResponseWriter)
 }
@@ -84,16 +81,23 @@ func (hf HandlerFunc) ServeRPC(r Request, rw *ResponseWriter) {
 
 // Client is an entity which can perform RPC calls against a remote endpoint.
 type Client interface {
-	CallRPC(Request) Response
+	CallRPC(ctx context.Context, method string, args interface{}, debug Debug) Response
 }
 
 // ClientFunc can be used to wrap an individual function which fits the CallRPC
 // signature, and use that function as a Client
-type ClientFunc func(Request) Response
+type ClientFunc func(context.Context, string, interface{}, Debug) Response
 
 // CallRPC implements the method for the Client interface by calling the
 // underlying function
-func (cf ClientFunc) CallRPC(r Request) { return cf(r) }
+func (cf ClientFunc) CallRPC(
+	ctx context.Context,
+	method string,
+	args interface{},
+	debug Debug,
+) Response {
+	return cf(ctx, method, args, debug)
+}
 
 // ReflectClient returns a Client whose CallRPC method will use reflection to
 // call the given Handler's ServeRPC method directly, using reflect.Value's Set
@@ -115,11 +119,13 @@ func ReflectClient(h Handler) Client {
 		ctx context.Context,
 		method string,
 		args interface{},
+		debug Debug,
 	) Response {
 		req := Request{
 			Context:   ctx,
 			Method:    method,
 			Unmarshal: func(i interface{}) error { return into(i, args) },
+			Debug:     debug,
 		}
 		rw := ResponseWriter{}
 		h.ServeRPC(req, &rw)
