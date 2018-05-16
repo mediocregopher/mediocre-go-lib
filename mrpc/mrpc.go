@@ -15,8 +15,14 @@ import (
 	"reflect"
 )
 
-// Request TODO
+// TODO Request is making things difficult. It wants to be split into two types,
+// like the Response is, but naming them is annoying. ClientRequest and
+// HandlerRequest? RequestReader? Maybe 4 arguments to Client isn't that much...
+
+// Request describes an RPC request being processed by a Handler
 type Request struct {
+	// Depending on the implementation of Client, Context may be canceled to
+	// indicate the Client has canceled the request.
 	Context context.Context
 
 	// The name of the RPC method being called.
@@ -25,24 +31,38 @@ type Request struct {
 	// Unmarshal takes in a pointer and unmarshals the RPC request's arguments
 	// into it. The properties of the unmarshaling are dependent on the
 	// underlying implementation of the protocol.
-	//
-	// This should only be called within ServeRPC.
 	Unmarshal func(interface{}) error
+
+	// Debugging information being carried with the Request. See Debug's docs
+	// for more on how it is intended to be used
+	Debug Debug
 }
 
-// ResponseWriter TODO
+// ResponseWriter is used to capture the response of an RPC request being
+// processed by a Handler
 type ResponseWriter struct {
-	Context context.Context
+	// Response should be overwritten with whatever response to the call should
+	// be. The exact nature and behavior of how the response value is treated is
+	// dependent on the RPC implementation.
+	Response interface{}
 
-	Respond func(interface{})
-	Err     func(error)
+	// Debug may be overwritten to provide debugging information back to the
+	// Client with the Response. See Debug's docs for more on how it is intended
+	// to be used.
+	Debug Debug
 }
 
-// Reponse TODO
+// Reponse describes the response from the RPC call being returned to the
+// Client.
 type Response struct {
-	Context   context.Context
+	// Unmarshal takes in a pointer value into which the Client will unmarshal
+	// the response value. The exact nature and behavior of how the pointer
+	// value is treated is dependend on the RPC implementation.
 	Unmarshal func(interface{}) error
-	Err       error
+
+	// Debug will be whatever debug information was set by the server when
+	// responding to the call.
+	Debug Debug
 }
 
 // Handler is a type which serves RPC calls. For each incoming Requests the
@@ -63,27 +83,17 @@ func (hf HandlerFunc) ServeRPC(r Request, rw *ResponseWriter) {
 }
 
 // Client is an entity which can perform RPC calls against a remote endpoint.
-//
-// res should be a pointer into which the result of the RPC call will be
-// unmarshaled according to Client's implementation. args will be marshaled and
-// sent to the remote endpoint according to Client's implementation.
 type Client interface {
-	CallRPC(ctx context.Context, method string, args interface{}) Response
+	CallRPC(Request) Response
 }
 
 // ClientFunc can be used to wrap an individual function which fits the CallRPC
 // signature, and use that function as a Client
-type ClientFunc func(context.Context, string, interface{}) Response
+type ClientFunc func(Request) Response
 
 // CallRPC implements the method for the Client interface by calling the
 // underlying function
-func (cf ClientFunc) CallRPC(
-	ctx context.Context,
-	method string,
-	args interface{},
-) Response {
-	return cf(ctx, method, args)
-}
+func (cf ClientFunc) CallRPC(r Request) { return cf(r) }
 
 // ReflectClient returns a Client whose CallRPC method will use reflection to
 // call the given Handler's ServeRPC method directly, using reflect.Value's Set
@@ -111,25 +121,14 @@ func ReflectClient(h Handler) Client {
 			Method:    method,
 			Unmarshal: func(i interface{}) error { return into(i, args) },
 		}
-		var res interface{}
-		var resErr error
-		rw := ResponseWriter{
-			Context: context.Background(),
-			Respond: func(i interface{}) { res = i },
-			Err:     func(err error) { resErr = err },
-		}
-
+		rw := ResponseWriter{}
 		h.ServeRPC(req, &rw)
 
 		return Response{
-			Context: rw.Context,
 			Unmarshal: func(i interface{}) error {
-				if resErr != nil {
-					return resErr
-				}
-				return into(i, res)
+				return into(i, rw.Response)
 			},
-			Err: resErr,
+			Debug: rw.Debug,
 		}
 	})
 }

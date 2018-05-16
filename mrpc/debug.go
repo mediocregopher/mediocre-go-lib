@@ -1,15 +1,13 @@
 package mrpc
 
-import "context"
-
-// Debug data is arbitrary data embedded in a Call's request by the Client or in
-// its Response by the Server. Debug data is organized into namespaces to help
-// avoid conflicts while still preserving serializability.
+// Debug data is arbitrary data embedded in a Request by the Client or in its
+// Response by the Server. Debug data is organized into namespaces to help avoid
+// conflicts while still preserving serializability.
 //
 // Debug data is intended to be used for debugging purposes only, and should
-// never be used to effect the path-of-action a Call takes. Put another way:
-// when implementing a Call always assume that the Debug info has been
-// accidentally removed from the Call's request/response.
+// never be used to effect the path-of-action a call takes. Put another way:
+// when implementing a call always assume that the Debug info has been
+// accidentally removed from the call's Request/Response.
 type Debug map[string]map[string]interface{}
 
 // Copy returns an identical copy of the Debug being called upon
@@ -25,10 +23,11 @@ func (d Debug) Copy() Debug {
 }
 
 // Set returns a copy of the Debug instance with the key set to the value within
-// the given namespace.
+// the given namespace. If Debug is nil a new instance is created and returned
+// with the key set.
 func (d Debug) Set(ns, key string, val interface{}) Debug {
 	if d == nil {
-		return Debug{ns: map[string]interface{}{key, val}}
+		return Debug{ns: map[string]interface{}{key: val}}
 	}
 	d = d.Copy()
 	if d[ns] == nil {
@@ -46,22 +45,4 @@ func (d Debug) Get(ns, key string) (interface{}, bool) {
 	}
 	val, ok := d[ns][key]
 	return val, ok
-}
-
-type debugKey int
-
-// CtxWithDebug returns a new Context with the given Debug embedded in it,
-// overwriting any previously embedded Debug.
-func CtxWithDebug(ctx context.Context, d Debug) context.Context {
-	return context.WithValue(ctx, debugKey(0), d)
-}
-
-// CtxDebug returns the Debug instance embedded in the Context, or nil if none
-// has been embedded.
-func CtxDebug(ctx context.Context) Debug {
-	d := ctx.Value(debugKey(0))
-	if d == nil {
-		return Debug(nil)
-	}
-	return d.(Debug)
 }
