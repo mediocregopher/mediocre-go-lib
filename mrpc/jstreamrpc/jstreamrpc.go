@@ -6,13 +6,13 @@ package jstreamrpc
 import (
 	"context"
 	"errors"
+	"net"
 
 	"github.com/mediocregopher/mediocre-go-lib/jstream"
 	"github.com/mediocregopher/mediocre-go-lib/mrpc"
 )
 
 // TODO Error?
-// TODO SizeHints
 // TODO it'd be nice if the types here played nice with mrpc.ReflectClient
 
 type debug struct {
@@ -93,10 +93,6 @@ func HandleCall(
 		Debug: head.debug.Debug,
 	}, rw)
 
-	// TODO unmarshaling request and marshaling response should be in
-	// their own go-routines, just in case they are streams/bytes which depend
-	// on each other
-
 	resErr, resErrOk := rw.Response.(error)
 	if resErrOk {
 		if err := w.EncodeValue(nil); err != nil {
@@ -104,19 +100,22 @@ func HandleCall(
 		}
 	} else {
 		if err := marshalBody(w, rw.Response); err != nil {
-			return err
+			if _, ok := err.(net.Error); ok {
+				return err
+			}
+			resErr = err
 		}
-	}
-
-	// make sure the body has been consumed
-	if err := body.Discard(); err != nil {
-		return err
 	}
 
 	if err := w.EncodeValue(resTail{
 		debug: debug{Debug: rw.Debug},
 		Error: resErr,
 	}); err != nil {
+		return err
+	}
+
+	// make sure the body has been consumed before returning
+	if err := body.Discard(); err != nil {
 		return err
 	}
 
@@ -152,13 +151,14 @@ func sqr(r mrpc.Request, rw *mrpc.ResponseWriter) {
 	}()
 
 	rw.Response = func(sw *jstream.StreamWriter) error {
-		sw = sw.EncodeStream()
-		for i := range ch {
-			if err := sw.EncodeValue(i * i); err != nil {
-				return err
+		return sw.EncodeStream(0, func(sw *jstream.StreamWriter) error {
+			for i := range ch {
+				if err := sw.EncodeValue(i * i); err != nil {
+					return err
+				}
 			}
-		}
-		return nil
+			return nil
+		})
 	}
 }
 */
