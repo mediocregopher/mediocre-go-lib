@@ -57,10 +57,11 @@ func TestEncoderDecoder(t *T) {
 			}
 		}
 
+		cancel := cancelable && mtest.Rand.Intn(10) == 0
 		tc := testCase{
 			typ:     typ,
-			cancel:  cancelable && mtest.Rand.Intn(10) == 0,
-			discard: mtest.Rand.Intn(20) == 0,
+			cancel:  cancel,
+			discard: !cancel && mtest.Rand.Intn(20) == 0,
 		}
 
 		switch typ {
@@ -96,33 +97,59 @@ func TestEncoderDecoder(t *T) {
 		success = success && assert.NoError(t, err, l...)
 		success = success && assert.Equal(t, tc.typ, typ, l...)
 
-		if tc.discard {
-			success = success && assert.NoError(t, el.Discard())
-			return success
-		}
-
 		switch typ {
 		case TypeJSONValue:
+			if tc.discard {
+				success = success && assert.NoError(t, el.Discard())
+				break
+			}
+
 			var val interface{}
-			success = success && assert.NoError(t, el.Value(&val), l...)
+			success = success && assert.NoError(t, el.DecodeValue(&val), l...)
 			success = success && assert.Equal(t, tc.val, val, l...)
 		case TypeByteBlob:
-			br, err := el.Bytes()
+			br, err := el.DecodeBytes()
 			success = success && assert.NoError(t, err, l...)
 			success = success && assert.Equal(t, uint(len(tc.bytes)), el.SizeHint(), l...)
+
+			// if we're discarding we read some of the bytes and then will
+			// discard the rest
+			var discardKeep int
+			if tc.discard {
+				discardKeep = mtest.Rand.Intn(len(tc.bytes) + 1)
+				br = io.LimitReader(br, int64(discardKeep))
+			}
+
 			all, err := ioutil.ReadAll(br)
 			if tc.cancel {
 				success = success && assert.Equal(t, ErrCanceled, err, l...)
+			} else if tc.discard {
+				success = success && assert.NoError(t, err, l...)
+				success = success && assert.Equal(t, tc.bytes[:discardKeep], all, l...)
+				success = success && assert.NoError(t, el.Discard())
+
 			} else {
 				success = success && assert.NoError(t, err, l...)
 				success = success && assert.Equal(t, tc.bytes, all, l...)
 			}
 		case TypeStream:
-			innerR, err := el.Stream()
+			innerR, err := el.DecodeStream()
 			success = success && assert.NoError(t, err, l...)
 			success = success && assert.Equal(t, uint(len(tc.stream)), el.SizeHint(), l...)
+
+			// if we're discarding we read some of the elements and then will
+			// discard the rest
+			var discardKeep int
+			if tc.discard {
+				discardKeep = mtest.Rand.Intn(len(tc.stream) + 1)
+			}
+
 			n := 0
 			for {
+				if tc.discard && n == discardKeep {
+					break
+				}
+
 				el := innerR.Next()
 				if tc.cancel && el.Err == ErrCanceled {
 					break
@@ -132,6 +159,9 @@ func TestEncoderDecoder(t *T) {
 				}
 				success = success && assertRead(innerR, el, tc.stream[n])
 				n++
+			}
+			if tc.discard {
+				success = success && assert.NoError(t, el.Discard())
 			}
 		}
 		return success
