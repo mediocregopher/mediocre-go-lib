@@ -40,20 +40,20 @@ const (
 func unmarshalBody(i interface{}, el jstream.Element) error {
 	switch iT := i.(type) {
 	case func(*jstream.StreamReader) error:
-		stream, err := el.Stream()
+		stream, err := el.DecodeStream()
 		if err != nil {
 			return err
 		}
 		return iT(stream)
 	case *io.Reader:
-		ioR, err := el.Bytes()
+		ioR, err := el.DecodeBytes()
 		if err != nil {
 			return err
 		}
 		*iT = ioR
 		return nil
 	default:
-		return el.Value(i)
+		return el.DecodeValue(i)
 	}
 }
 
@@ -82,7 +82,7 @@ func HandleCall(
 	defer cancel()
 
 	var head reqHead
-	if err := r.Next().Value(&head); err != nil {
+	if err := r.Next().DecodeValue(&head); err != nil {
 		return err
 	} else if head.Method == "" {
 		return errors.New("request head missing 'method' field")
@@ -117,11 +117,6 @@ func HandleCall(
 			return err
 		}
 	}
-
-	// TODO to reduce chance of user error maybe Discard should discard any
-	// remaining data on the Element, not on Elements which haven't been read
-	// from yet. Then it could always be called on the request body at this
-	// point.
 
 	// Reading the tail (and maybe discarding the body) should only be done once
 	// marshalBody has finished
