@@ -178,7 +178,12 @@ type element struct {
 // If there was an error reading the Element off the StreamReader that error is
 // kept in the Element and returned from any method call.
 type Element struct {
-	element
+	Type Type
+
+	// SizeHint is the size hint which may have been optionally sent for
+	// ByteBlob and Stream elements, or zero. The hint is never required to be
+	// sent or to be accurate.
+	SizeHint uint
 
 	// Err will be set if the StreamReader encountered an error while reading
 	// the next Element. If set then the Element is otherwise unusable.
@@ -188,90 +193,59 @@ type Element struct {
 	// depending on the behavior of the writer on the other end.
 	Err error
 
-	// needed for byte blobs and streams
-	sr StreamReader
-}
-
-// Type returns the Element's Type, or an error
-func (el Element) Type() (Type, error) {
-	if el.Err != nil {
-		return "", el.Err
-	} else if el.element.StreamStart {
-		return TypeStream, nil
-	} else if el.element.BytesStart {
-		return TypeByteBlob, nil
-	} else if len(el.element.Value) > 0 {
-		return TypeJSONValue, nil
-	}
-	return "", errors.New("malformed Element, can't determine type")
+	value json.RawMessage
+	br    io.Reader
+	sr    *StreamReader
 }
 
 func (el Element) assertType(is Type) error {
-	typ, err := el.Type()
-	if err != nil {
-		return err
-	} else if typ != is {
-		return ErrWrongType{Actual: typ}
+	if el.Err != nil {
+		return el.Err
+	} else if el.Type != is {
+		return ErrWrongType{Actual: el.Type}
 	}
 	return nil
 }
 
 // DecodeValue attempts to unmarshal a JSON Value Element's value into the given
 // receiver.
-//
-// This method should not be called more than once.
 func (el Element) DecodeValue(i interface{}) error {
 	if err := el.assertType(TypeJSONValue); err != nil {
 		return err
 	}
-	return json.Unmarshal(el.element.Value, i)
-}
-
-// SizeHint returns the size hint which may have been optionally sent for
-// ByteBlob and Stream elements, or zero. The hint is never required to be
-// sent or to be accurate.
-func (el Element) SizeHint() uint {
-	return el.element.SizeHint
+	return json.Unmarshal(el.value, i)
 }
 
 // DecodeBytes returns an io.Reader which will contain the contents of a
 // ByteBlob element. The io.Reader _must_ be read till io.EOF or ErrCanceled
 // before the StreamReader may be used again.
-//
-// This method should not be called more than once.
 func (el Element) DecodeBytes() (io.Reader, error) {
 	if err := el.assertType(TypeByteBlob); err != nil {
 		return nil, err
 	}
-	return el.sr.readBytes(), nil
+	return el.br, nil
 }
 
 // DecodeStream returns the embedded stream represented by this Element as a
 // StreamReader. The returned StreamReader _must_ be iterated (via the Next
 // method) till ErrStreamEnded or ErrCanceled is returned before the original
 // StreamReader may be used again.
-//
-// This method should not be called more than once.
 func (el Element) DecodeStream() (*StreamReader, error) {
 	if err := el.assertType(TypeStream); err != nil {
 		return nil, err
 	}
-	return &el.sr, nil
+	return el.sr, nil
 }
 
 // Discard reads whatever of this Element's data may be left on the StreamReader
-// it came from and discards it, making the StreamReader ready to have Next call
-// on it again.
+// it came from and discards it, making the StreamReader ready to have Next
+// called on it again.
 //
 // If the Element is a Byte Blob and is ended with io.EOF, or if the Element is
 // a Stream and is ended with ErrStreamEnded then this returns nil. If either is
 // canceled this also returns nil. All other errors are returned.
 func (el Element) Discard() error {
-	typ, err := el.Type()
-	if err != nil {
-		return err
-	}
-	switch typ {
+	switch el.Type {
 	case TypeByteBlob:
 		r, _ := el.DecodeBytes()
 		_, err := io.Copy(ioutil.Discard, r)
@@ -312,6 +286,11 @@ type StreamReader struct {
 // NewStreamReader takes an io.Reader and interprets it as a jstream Stream.
 func NewStreamReader(r io.Reader) *StreamReader {
 	return &StreamReader{orig: r}
+}
+
+func (sr *StreamReader) clone() *StreamReader {
+	sr2 := *sr
+	return &sr2
 }
 
 // pulls buffered bytes out of either the json.Decoder or byteBlobReader, if
@@ -363,7 +342,25 @@ func (sr *StreamReader) Next() Element {
 		return Element{Err: err}
 	}
 
-	return Element{sr: *sr, element: el}
+	if el.StreamStart {
+		return Element{
+			Type:     TypeStream,
+			SizeHint: el.SizeHint,
+			sr:       sr.clone(),
+		}
+	} else if el.BytesStart {
+		return Element{
+			Type:     TypeByteBlob,
+			SizeHint: el.SizeHint,
+			br:       sr.readBytes(),
+		}
+	} else if len(el.Value) > 0 {
+		return Element{
+			Type:  TypeJSONValue,
+			value: el.Value,
+		}
+	}
+	return Element{Err: errors.New("malformed Element, can't determine type")}
 }
 
 func (sr *StreamReader) readBytes() *byteBlobReader {

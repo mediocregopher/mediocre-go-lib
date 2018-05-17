@@ -59,9 +59,10 @@ func TestEncoderDecoder(t *T) {
 
 		cancel := cancelable && mtest.Rand.Intn(10) == 0
 		tc := testCase{
-			typ:     typ,
-			cancel:  cancel,
-			discard: !cancel && mtest.Rand.Intn(20) == 0,
+			typ:    typ,
+			cancel: cancel,
+			// using cancelable here is gross, but whatever
+			discard: cancelable && !cancel && mtest.Rand.Intn(20) == 0,
 		}
 
 		switch typ {
@@ -93,11 +94,9 @@ func TestEncoderDecoder(t *T) {
 	var assertRead func(*StreamReader, Element, testCase) bool
 	assertRead = func(r *StreamReader, el Element, tc testCase) bool {
 		l, success := tcLog(tc), true
-		typ, err := el.Type()
-		success = success && assert.NoError(t, err, l...)
-		success = success && assert.Equal(t, tc.typ, typ, l...)
+		success = success && assert.Equal(t, tc.typ, el.Type, l...)
 
-		switch typ {
+		switch el.Type {
 		case TypeJSONValue:
 			if tc.discard {
 				success = success && assert.NoError(t, el.Discard())
@@ -110,7 +109,7 @@ func TestEncoderDecoder(t *T) {
 		case TypeByteBlob:
 			br, err := el.DecodeBytes()
 			success = success && assert.NoError(t, err, l...)
-			success = success && assert.Equal(t, uint(len(tc.bytes)), el.SizeHint(), l...)
+			success = success && assert.Equal(t, uint(len(tc.bytes)), el.SizeHint, l...)
 
 			// if we're discarding we read some of the bytes and then will
 			// discard the rest
@@ -135,7 +134,7 @@ func TestEncoderDecoder(t *T) {
 		case TypeStream:
 			innerR, err := el.DecodeStream()
 			success = success && assert.NoError(t, err, l...)
-			success = success && assert.Equal(t, uint(len(tc.stream)), el.SizeHint(), l...)
+			success = success && assert.Equal(t, uint(len(tc.stream)), el.SizeHint, l...)
 
 			// if we're discarding we read some of the elements and then will
 			// discard the rest
@@ -280,4 +279,30 @@ func TestEncoderDecoder(t *T) {
 		tc := randTestCase(TypeStream, false)
 		do(tc.stream...)
 	}
+}
+
+func TestDoubleDiscardBytes(t *T) {
+	buf := new(bytes.Buffer)
+	w := NewStreamWriter(buf)
+	b1, b2 := mtest.RandBytes(10), mtest.RandBytes(10)
+	assert.NoError(t, w.EncodeBytes(uint(len(b1)), bytes.NewBuffer(b1)))
+	assert.NoError(t, w.EncodeBytes(uint(len(b2)), bytes.NewBuffer(b2)))
+
+	r := NewStreamReader(buf)
+	el1 := r.Next()
+	r1, err := el1.DecodeBytes()
+	assert.NoError(t, err)
+
+	b1got, err := ioutil.ReadAll(r1)
+	assert.NoError(t, err)
+	assert.Equal(t, b1, b1got)
+
+	// discarding an already consumed byte blob shouldn't do anything
+	assert.NoError(t, el1.Discard())
+
+	r2, err := r.Next().DecodeBytes()
+	assert.NoError(t, err)
+	b2got, err := ioutil.ReadAll(r2)
+	assert.NoError(t, err)
+	assert.Equal(t, b2, b2got)
 }
