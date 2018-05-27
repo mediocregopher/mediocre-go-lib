@@ -51,9 +51,9 @@ func TestEncoderDecoder(t *T) {
 			case pick == 0:
 				typ = TypeStream
 			case pick < 4:
-				typ = TypeJSONValue
+				typ = TypeValue
 			default:
-				typ = TypeByteBlob
+				typ = TypeBytes
 			}
 		}
 
@@ -66,7 +66,7 @@ func TestEncoderDecoder(t *T) {
 		}
 
 		switch typ {
-		case TypeJSONValue:
+		case TypeValue:
 			tc.val = map[string]interface{}{
 				mtest.RandHex(8): mtest.RandHex(8),
 				mtest.RandHex(8): mtest.RandHex(8),
@@ -75,7 +75,7 @@ func TestEncoderDecoder(t *T) {
 				mtest.RandHex(8): mtest.RandHex(8),
 			}
 			return tc
-		case TypeByteBlob:
+		case TypeBytes:
 			tc.bytes = mtest.RandBytes(mtest.Rand.Intn(256))
 			return tc
 		case TypeStream:
@@ -97,7 +97,7 @@ func TestEncoderDecoder(t *T) {
 		success = success && assert.Equal(t, tc.typ, el.Type, l...)
 
 		switch el.Type {
-		case TypeJSONValue:
+		case TypeValue:
 			if tc.discard {
 				success = success && assert.NoError(t, el.Discard())
 				break
@@ -106,7 +106,7 @@ func TestEncoderDecoder(t *T) {
 			var val interface{}
 			success = success && assert.NoError(t, el.DecodeValue(&val), l...)
 			success = success && assert.Equal(t, tc.val, val, l...)
-		case TypeByteBlob:
+		case TypeBytes:
 			br, err := el.DecodeBytes()
 			success = success && assert.NoError(t, err, l...)
 			success = success && assert.Equal(t, uint(len(tc.bytes)), el.SizeHint, l...)
@@ -170,9 +170,9 @@ func TestEncoderDecoder(t *T) {
 	assertWrite = func(w *StreamWriter, tc testCase) bool {
 		l, success := tcLog(tc), true
 		switch tc.typ {
-		case TypeJSONValue:
+		case TypeValue:
 			success = success && assert.NoError(t, w.EncodeValue(tc.val), l...)
-		case TypeByteBlob:
+		case TypeBytes:
 			if tc.cancel {
 				r := newCancelBuffer(tc.bytes)
 				err := w.EncodeBytes(uint(len(tc.bytes)), r)
@@ -248,32 +248,32 @@ func TestEncoderDecoder(t *T) {
 
 	// some basic test cases
 	do() // empty stream
-	do(randTestCase(TypeJSONValue, false))
-	do(randTestCase(TypeByteBlob, false))
+	do(randTestCase(TypeValue, false))
+	do(randTestCase(TypeBytes, false))
 	do(
-		randTestCase(TypeJSONValue, false),
-		randTestCase(TypeJSONValue, false),
-		randTestCase(TypeJSONValue, false),
+		randTestCase(TypeValue, false),
+		randTestCase(TypeValue, false),
+		randTestCase(TypeValue, false),
 	)
 	do(
-		randTestCase(TypeJSONValue, false),
-		randTestCase(TypeByteBlob, false),
-		randTestCase(TypeJSONValue, false),
+		randTestCase(TypeValue, false),
+		randTestCase(TypeBytes, false),
+		randTestCase(TypeValue, false),
 	)
 	do(
-		randTestCase(TypeByteBlob, false),
-		randTestCase(TypeByteBlob, false),
-		randTestCase(TypeByteBlob, false),
+		randTestCase(TypeBytes, false),
+		randTestCase(TypeBytes, false),
+		randTestCase(TypeBytes, false),
 	)
 	do(
-		randTestCase(TypeJSONValue, false),
+		randTestCase(TypeValue, false),
 		randTestCase(TypeStream, false),
-		randTestCase(TypeJSONValue, false),
+		randTestCase(TypeValue, false),
 	)
 
 	// some special cases, empty elements which are canceled
 	do(testCase{typ: TypeStream, cancel: true})
-	do(testCase{typ: TypeByteBlob, cancel: true})
+	do(testCase{typ: TypeBytes, cancel: true})
 
 	for i := 0; i < 1000; i++ {
 		tc := randTestCase(TypeStream, false)
@@ -297,7 +297,7 @@ func TestDoubleDiscardBytes(t *T) {
 	assert.NoError(t, err)
 	assert.Equal(t, b1, b1got)
 
-	// discarding an already consumed byte blob shouldn't do anything
+	// discarding an already consumed bytes shouldn't do anything
 	assert.NoError(t, el1.Discard())
 
 	r2, err := r.Next().DecodeBytes()

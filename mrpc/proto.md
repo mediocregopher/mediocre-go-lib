@@ -50,13 +50,13 @@ completely consumed and the pipe may be used for a new request.
 
 The two elements of the request stream are specified as follows:
 
-* The first element, the head, is a JSON value with an object containing a
+* The first element, the head, is a value element with an object containing a
   `name` field, which identifies the call being made, and optionally a `debug`
   field.
 
-* The second element is the argument to the call. This may be a JSON value, a
-  byte blob, or an embedded stream containing even more elements, depending on
-  the call. It's up to the client and server to coordinate beforehand what to
+* The second element is the argument to the call. This may be a value, a
+  bytes, or an embedded stream element containing even more elements, depending
+  on the call. It's up to the client and server to coordinate beforehand what to
   expect here.
 
 ## Call response
@@ -67,12 +67,12 @@ completely consumed and the pipe may be used for a new request.
 
 The two elements of the response stream are specified as follows:
 
-* The first element is the response from the call. This may be a JSON value, a
-  byte blob, or an embedded stream containing even more elements, depending on
-  the call. It's up to the client and server to coordinate beforehand what to
-  expect here.
+* The first element is the response from the call. This may be a value, a bytes,
+  or an embedded stream element containing even more elements, depending on the
+  call. It's up to the client and server to coordinate beforehand what to expect
+  here.
 
-* The second element, the tail, is a JSON value with an object optionally
+* The second element, the tail, is a value element with an object optionally
   containing an `err` field, and optionally containing a `debug` field. The
   value of `err` may be any JSON value which is meaningful to the client and
   server. This element is required even if there's no `err` or `debug` data.

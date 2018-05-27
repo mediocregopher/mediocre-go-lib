@@ -34,32 +34,30 @@
 //
 // There are three jstream element types:
 //
-// * JSON Value: Any JSON value
-// * Byte Blob: A stream of bytes of unknown, and possibly infinite, size
+// * Value: Any JSON value
+// * Bytes: A stream of bytes of unknown, and possibly infinite, size
 // * Stream: A heterogenous sequence of jstream elements of unknown, and
 //   possibly infinite, size
 //
-// JSON Value elements are defined as being JSON objects with a `val` field. The
+// Value elements are defined as being JSON objects with a `val` field. The
 // value of that field is the JSON Value.
 //
 //	{ "val":{"foo":"bar"} }
 //
-// Byte Blob elements are defined as being a JSON object with a `bytesStart`
-// field with a value of `true`. Immediately following the JSON object are the
-// bytes which are the Byte Blob, encoded using standard base64. Immediately
-// following the encoded bytes is the character `$`, to indicate the bytes have
-// been completely written. Alternatively the character `!` may be written
-// immediately after the bytes to indicate writing was canceled prematurely by
-// the writer.
+// Bytes elements are defined as being a JSON object with a `bytesStart` field
+// with a value of `true`. Immediately following the JSON object are the bytes
+// encoded using standard base64. Immediately following the encoded bytes is the
+// character `$`, to indicate the bytes have been completely written.
+// Alternatively the character `!` may be written immediately after the bytes to
+// indicate writing was canceled prematurely by the writer.
 //
 //	{ "bytesStart":true }wXnxQHgUO8g=$
 //	{ "bytesStart":true }WGYcTI8=!
 //
 // The JSON object may also contain a `sizeHint` field, which gives the
-// estimated number of bytes in the Byte Blob (excluding the trailing
-// delimiter). The hint is neither required to exist or be accurate if it does.
-// The trailing delimeter (`$` or `!`) is required to be sent even if the hint
-// is sent.
+// estimated number of bytes (excluding the trailing delimiter). The hint is
+// neither required to exist or be accurate if it does. The trailing delimeter
+// (`$` or `!`) is required to be sent even if the hint is sent.
 //
 // Stream elements are defined as being a JSON object with a `streamStart` field
 // with a value of `true`. Immediately following the JSON object will be zero
@@ -110,6 +108,10 @@ package jstream
 // TODO figure out how to expose the json.Encoder/Decoders so that users can set
 // custom options on them (like UseNumber and whatnot)
 
+// TODO attempt to refactor this into using channels? or write a layer on top
+// which does so?
+// TODO TypeNil?
+
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -119,7 +121,7 @@ import (
 	"io/ioutil"
 )
 
-// byte blob constants
+// bytes constants
 const (
 	bbEnd    = '$'
 	bbCancel = '!'
@@ -131,9 +133,9 @@ type Type string
 
 // The jstream element types
 const (
-	TypeJSONValue Type = "jsonValue"
-	TypeByteBlob  Type = "byteBlob"
-	TypeStream    Type = "stream"
+	TypeValue  Type = "value"
+	TypeBytes  Type = "bytes"
+	TypeStream Type = "stream"
 )
 
 // ErrWrongType is an error returned by the Decode* methods on Decoder when the
@@ -148,7 +150,7 @@ func (err ErrWrongType) Error() string {
 }
 
 var (
-	// ErrCanceled is returned when reading either a Byte Blob or a Stream,
+	// ErrCanceled is returned when reading either a Bytes or a Stream element,
 	// indicating that the writer has prematurely canceled the element.
 	ErrCanceled = errors.New("canceled by writer")
 
@@ -172,8 +174,8 @@ type element struct {
 // Element is a single jstream element which is read off a StreamReader.
 //
 // If a method is called which expects a particular Element type (e.g.
-// DecodeValue, which expects a JSONValue Element) but the Element is not of
-// that type then an ErrWrongType will be returned.
+// DecodeValue, which expects a Value Element) but the Element is not of that
+// type then an ErrWrongType will be returned.
 //
 // If there was an error reading the Element off the StreamReader that error is
 // kept in the Element and returned from any method call.
@@ -207,20 +209,20 @@ func (el Element) assertType(is Type) error {
 	return nil
 }
 
-// DecodeValue attempts to unmarshal a JSON Value Element's value into the given
+// DecodeValue attempts to unmarshal a Value Element's value into the given
 // receiver.
 func (el Element) DecodeValue(i interface{}) error {
-	if err := el.assertType(TypeJSONValue); err != nil {
+	if err := el.assertType(TypeValue); err != nil {
 		return err
 	}
 	return json.Unmarshal(el.value, i)
 }
 
 // DecodeBytes returns an io.Reader which will contain the contents of a
-// ByteBlob element. The io.Reader _must_ be read till io.EOF or ErrCanceled
-// before the StreamReader may be used again.
+// Bytes element. The io.Reader _must_ be read till io.EOF or ErrCanceled is
+// returned before the StreamReader may be used again.
 func (el Element) DecodeBytes() (io.Reader, error) {
-	if err := el.assertType(TypeByteBlob); err != nil {
+	if err := el.assertType(TypeBytes); err != nil {
 		return nil, err
 	}
 	return el.br, nil
@@ -241,12 +243,12 @@ func (el Element) DecodeStream() (*StreamReader, error) {
 // it came from and discards it, making the StreamReader ready to have Next
 // called on it again.
 //
-// If the Element is a Byte Blob and is ended with io.EOF, or if the Element is
-// a Stream and is ended with ErrStreamEnded then this returns nil. If either is
+// If the Element is a Bytes and is ended with io.EOF, or if the Element is a
+// Stream and is ended with ErrStreamEnded then this returns nil. If either is
 // canceled this also returns nil. All other errors are returned.
 func (el Element) Discard() error {
 	switch el.Type {
-	case TypeByteBlob:
+	case TypeBytes:
 		r, _ := el.DecodeBytes()
 		_, err := io.Copy(ioutil.Discard, r)
 		if err == ErrCanceled {
@@ -265,7 +267,7 @@ func (el Element) Discard() error {
 				return err
 			}
 		}
-	default: // TypeJSONValue
+	default: // TypeValue
 		return nil
 	}
 }
@@ -277,7 +279,7 @@ type StreamReader struct {
 
 	// only one of these can be set at a time
 	dec *json.Decoder
-	bbr *byteBlobReader
+	br  *bytesReader
 
 	// once set this StreamReader will always return this error on Next
 	err error
@@ -293,25 +295,25 @@ func (sr *StreamReader) clone() *StreamReader {
 	return &sr2
 }
 
-// pulls buffered bytes out of either the json.Decoder or byteBlobReader, if
+// pulls buffered bytes out of either the json.Decoder or bytesReader, if
 // possible, and returns an io.MultiReader of those and orig. Will also set the
-// json.Decoder/byteBlobReader to nil if that's where the bytes came from.
+// json.Decoder/bytesReader to nil if that's where the bytes came from.
 func (sr *StreamReader) multiReader() io.Reader {
 	if sr.dec != nil {
 		buf := sr.dec.Buffered()
 		sr.dec = nil
 		return io.MultiReader(buf, sr.orig)
-	} else if sr.bbr != nil {
-		buf := sr.bbr.buffered()
-		sr.bbr = nil
+	} else if sr.br != nil {
+		buf := sr.br.buffered()
+		sr.br = nil
 		return io.MultiReader(buf, sr.orig)
 	}
 	return sr.orig
 }
 
 // Next reads, decodes, and returns the next Element off the StreamReader. If
-// the Element is a ByteBlob or embedded Stream then it _must_ be fully consumed
-// before Next is called on this StreamReader again.
+// the Element is a Bytes or embedded Stream Element then it _must_ be fully
+// consumed before Next is called on this StreamReader again.
 //
 // The returned Element's Err field will be ErrStreamEnd if the Stream was
 // ended, or ErrCanceled if it was canceled, and this StreamReader should not be
@@ -350,22 +352,22 @@ func (sr *StreamReader) Next() Element {
 		}
 	} else if el.BytesStart {
 		return Element{
-			Type:     TypeByteBlob,
+			Type:     TypeBytes,
 			SizeHint: el.SizeHint,
 			br:       sr.readBytes(),
 		}
 	} else if len(el.Value) > 0 {
 		return Element{
-			Type:  TypeJSONValue,
+			Type:  TypeValue,
 			value: el.Value,
 		}
 	}
 	return Element{Err: errors.New("malformed Element, can't determine type")}
 }
 
-func (sr *StreamReader) readBytes() *byteBlobReader {
-	sr.bbr = newByteBlobReader(sr.multiReader())
-	return sr.bbr
+func (sr *StreamReader) readBytes() *bytesReader {
+	sr.br = newBytesReader(sr.multiReader())
+	return sr.br
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -384,7 +386,7 @@ func NewStreamWriter(w io.Writer) *StreamWriter {
 }
 
 // EncodeValue marshals the given value and writes it to the Stream as a
-// JSONValue element.
+// Value element.
 func (sw *StreamWriter) EncodeValue(i interface{}) error {
 	b, err := json.Marshal(i)
 	if err != nil {
@@ -394,11 +396,11 @@ func (sw *StreamWriter) EncodeValue(i interface{}) error {
 }
 
 // EncodeBytes copies the given io.Reader, until io.EOF, onto the Stream as a
-// ByteBlob element. This method will block until copying is completed or an
-// error is encountered.
+// Bytes element. This method will block until copying is completed or an error
+// is encountered.
 //
-// If the io.Reader returns any error which isn't io.EOF then the ByteBlob is
-// canceled and that error is returned from this method. Otherwise nil is
+// If the io.Reader returns any error which isn't io.EOF then the Bytes element
+// is canceled and that error is returned from this method. Otherwise nil is
 // returned.
 //
 // sizeHint may be given if it's known or can be guessed how many bytes the

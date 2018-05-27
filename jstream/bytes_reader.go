@@ -25,24 +25,24 @@ func (dr *delimReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-type byteBlobReader struct {
+type bytesReader struct {
 	dr  *delimReader
 	dec io.Reader
 }
 
-func newByteBlobReader(r io.Reader) *byteBlobReader {
+func newBytesReader(r io.Reader) *bytesReader {
 	dr := &delimReader{r: r}
-	return &byteBlobReader{
+	return &bytesReader{
 		dr:  dr,
 		dec: base64.NewDecoder(base64.StdEncoding, dr),
 	}
 }
 
-func (bbr *byteBlobReader) Read(into []byte) (int, error) {
-	n, err := bbr.dec.Read(into)
-	if bbr.dr.delim == bbEnd {
+func (br *bytesReader) Read(into []byte) (int, error) {
+	n, err := br.dec.Read(into)
+	if br.dr.delim == bbEnd {
 		return n, io.EOF
-	} else if bbr.dr.delim == bbCancel {
+	} else if br.dr.delim == bbCancel {
 		return n, ErrCanceled
 	}
 	return n, err
@@ -50,6 +50,6 @@ func (bbr *byteBlobReader) Read(into []byte) (int, error) {
 
 // returns the bytes which were read off the underlying io.Reader but which
 // haven't been consumed yet.
-func (bbr *byteBlobReader) buffered() io.Reader {
-	return bytes.NewBuffer(bbr.dr.rest)
+func (br *bytesReader) buffered() io.Reader {
+	return bytes.NewBuffer(br.dr.rest)
 }

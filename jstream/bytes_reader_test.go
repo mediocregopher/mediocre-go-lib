@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type bbrTest struct {
+type brTest struct {
 	wsSuffix     []byte // whitespace
 	body         []byte
 	shouldCancel bool
 	intoSize     int
 }
 
-func randBBRTest(minBodySize, maxBodySize int) bbrTest {
+func randBRTest(minBodySize, maxBodySize int) brTest {
 	var whitespace = []byte{' ', '\n', '\t', '\r'}
 	genWhitespace := func(n int) []byte {
 		ws := make([]byte, n)
@@ -29,18 +29,18 @@ func randBBRTest(minBodySize, maxBodySize int) bbrTest {
 	}
 
 	body := mtest.RandBytes(minBodySize + mtest.Rand.Intn(maxBodySize-minBodySize))
-	return bbrTest{
+	return brTest{
 		wsSuffix: genWhitespace(mtest.Rand.Intn(10)),
 		body:     body,
 		intoSize: 1 + mtest.Rand.Intn(len(body)+1),
 	}
 }
 
-func (bt bbrTest) msgAndArgs() []interface{} {
+func (bt brTest) msgAndArgs() []interface{} {
 	return []interface{}{"bt:%#v len(body):%d", bt, len(bt.body)}
 }
 
-func (bt bbrTest) mkBytes() []byte {
+func (bt brTest) mkBytes() []byte {
 	buf := new(bytes.Buffer)
 	enc := base64.NewEncoder(base64.StdEncoding, buf)
 
@@ -58,13 +58,13 @@ func (bt bbrTest) mkBytes() []byte {
 	return buf.Bytes()
 }
 
-func (bt bbrTest) do(t *T) bool {
+func (bt brTest) do(t *T) bool {
 	buf := bytes.NewBuffer(bt.mkBytes())
-	bbr := newByteBlobReader(buf)
+	br := newBytesReader(buf)
 
 	into := make([]byte, bt.intoSize)
 	outBuf := new(bytes.Buffer)
-	_, err := io.CopyBuffer(outBuf, bbr, into)
+	_, err := io.CopyBuffer(outBuf, br, into)
 	if bt.shouldCancel {
 		return assert.Equal(t, ErrCanceled, err, bt.msgAndArgs()...)
 	}
@@ -74,7 +74,7 @@ func (bt bbrTest) do(t *T) bool {
 	if !assert.Equal(t, bt.body, outBuf.Bytes(), bt.msgAndArgs()...) {
 		return false
 	}
-	fullRest := append(bbr.dr.rest, buf.Bytes()...)
+	fullRest := append(br.dr.rest, buf.Bytes()...)
 	if len(bt.wsSuffix) == 0 {
 		return assert.Empty(t, fullRest, bt.msgAndArgs()...)
 	}
@@ -83,15 +83,15 @@ func (bt bbrTest) do(t *T) bool {
 
 func TestByteBlobReader(t *T) {
 	// some sanity tests
-	bbrTest{
+	brTest{
 		body:     []byte{2, 3, 4, 5},
 		intoSize: 4,
 	}.do(t)
-	bbrTest{
+	brTest{
 		body:     []byte{2, 3, 4, 5},
 		intoSize: 3,
 	}.do(t)
-	bbrTest{
+	brTest{
 		body:         []byte{2, 3, 4, 5},
 		shouldCancel: true,
 		intoSize:     3,
@@ -99,7 +99,7 @@ func TestByteBlobReader(t *T) {
 
 	// fuzz this bitch
 	for i := 0; i < 50000; i++ {
-		bt := randBBRTest(0, 1000)
+		bt := randBRTest(0, 1000)
 		if !bt.do(t) {
 			return
 		}
@@ -112,7 +112,7 @@ func TestByteBlobReader(t *T) {
 
 func BenchmarkByteBlobReader(b *B) {
 	type bench struct {
-		bt    bbrTest
+		bt    brTest
 		body  []byte
 		buf   *bytes.Reader
 		cpBuf []byte
@@ -122,7 +122,7 @@ func BenchmarkByteBlobReader(b *B) {
 		n := 100
 		benches := make([]bench, n)
 		for i := range benches {
-			bt := randBBRTest(minBodySize, maxBodySize)
+			bt := randBRTest(minBodySize, maxBodySize)
 			body := bt.mkBytes()
 			benches[i] = bench{
 				bt:    bt,
@@ -146,15 +146,15 @@ func BenchmarkByteBlobReader(b *B) {
 		}
 	}
 
-	testBBR := func(b *B, benches []bench) {
+	testBR := func(b *B, benches []bench) {
 		j := 0
 		for i := 0; i < b.N; i++ {
 			if j >= len(benches) {
 				j = 0
 			}
 			benches[j].buf.Reset(benches[j].body)
-			bbr := newByteBlobReader(benches[j].buf)
-			io.CopyBuffer(ioutil.Discard, bbr, benches[j].cpBuf)
+			br := newBytesReader(benches[j].buf)
+			io.CopyBuffer(ioutil.Discard, br, benches[j].cpBuf)
 			j++
 		}
 	}
@@ -177,8 +177,8 @@ func BenchmarkByteBlobReader(b *B) {
 			b.Run("raw", func(b *B) {
 				testRaw(b, set)
 			})
-			b.Run("bbr", func(b *B) {
-				testBBR(b, set)
+			b.Run("br", func(b *B) {
+				testBR(b, set)
 			})
 			b.StopTimer()
 		})
