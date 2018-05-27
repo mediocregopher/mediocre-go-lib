@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -38,9 +37,6 @@ func (h *Hook) Then(h2 Hook) {
 		return h2(ctx)
 	}
 }
-
-// TODO Having Also here might be more confusing than it's worth, since Child
-// effectively does the same thing wrt Hook handling
 
 // Also modifies the called upon Hook such that it will perform the original
 // functionality at the same time as the given Hook, wait for both to complete,
@@ -202,7 +198,7 @@ func (c *Cfg) runPreBlock(ctx context.Context, src Source) error {
 
 	startCtx, cancel := context.WithTimeout(ctx, c.StartTimeout)
 	defer cancel()
-	return c.startHooks(startCtx)
+	return c.Start(startCtx)
 }
 
 // Run blocks while performing all steps of a Cfg run. The steps, in order, are;
@@ -225,7 +221,7 @@ func (c *Cfg) Run(ctx context.Context, src Source) error {
 
 	stopCtx, cancel := context.WithTimeout(context.Background(), c.StopTimeout)
 	defer cancel()
-	return c.stopHooks(stopCtx)
+	return c.Stop(stopCtx)
 }
 
 // TestRun is like Run, except it's intended to only be used during tests to
@@ -236,36 +232,6 @@ func (c *Cfg) TestRun() {
 	if err := c.runPreBlock(context.Background(), nil); err != nil {
 		panic(err)
 	}
-}
-
-func (c *Cfg) startHooks(ctx context.Context) error {
-	return c.recurseHooks(ctx, func(c *Cfg) Hook { return c.Start })
-}
-
-func (c *Cfg) stopHooks(ctx context.Context) error {
-	return c.recurseHooks(ctx, func(c *Cfg) Hook { return c.Stop })
-}
-
-func (c *Cfg) recurseHooks(ctx context.Context, pickHook func(*Cfg) Hook) error {
-	var wg sync.WaitGroup
-	wg.Add(len(c.Children))
-	errCh := make(chan error, len(c.Children))
-	for name := range c.Children {
-		childCfg := c.Children[name]
-		go func() {
-			defer wg.Done()
-			if err := childCfg.recurseHooks(ctx, pickHook); err != nil {
-				errCh <- err
-			}
-		}()
-	}
-	wg.Wait()
-	close(errCh)
-	if err := <-errCh; err != nil {
-		return err
-	}
-
-	return pickHook(c)(ctx)
 }
 
 // Child returns a sub-Cfg of the callee with the given name. The name will be
@@ -280,5 +246,7 @@ func (c *Cfg) Child(name string) *Cfg {
 	c2.Path = append(c2.Path, c.Path...)
 	c2.Path = append(c2.Path, name)
 	c.Children[name] = c2
+	c.Start.Then(func(ctx context.Context) error { return c2.Start(ctx) })
+	c.Stop.Then(func(ctx context.Context) error { return c2.Stop(ctx) })
 	return c2
 }
