@@ -51,7 +51,7 @@ type ResponseWriter struct {
 type Response struct {
 	// Unmarshal takes in a pointer value into which the Client will unmarshal
 	// the response value. The exact nature and behavior of how the pointer
-	// value is treated is dependend on the RPC implementation.
+	// value is treated is dependent on the RPC implementation.
 	Unmarshal func(interface{}) error
 
 	// Debug will be whatever debug information was set by the server when
