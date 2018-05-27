@@ -108,8 +108,6 @@ package jstream
 // TODO figure out how to expose the json.Encoder/Decoders so that users can set
 // custom options on them (like UseNumber and whatnot)
 
-// TODO attempt to refactor this into using channels? or write a layer on top
-// which does so?
 // TODO TypeNil?
 
 import (
