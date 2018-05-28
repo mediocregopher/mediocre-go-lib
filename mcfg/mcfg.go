@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // TODO Sources:
@@ -118,6 +119,27 @@ func New() *Cfg {
 		Start:    Nop(),
 		Stop:     Nop(),
 	}
+}
+
+// IsRoot returns true if this is the root instance of a Cfg (i.e. the one
+// returned by New)
+func (c *Cfg) IsRoot() bool {
+	return len(c.Path) == 0
+}
+
+// Name returns the name given to this instance when it was created via Child.
+// if this instance was created via New (i.e. it is the root instance) then
+// empty string is returned.
+func (c *Cfg) Name() string {
+	if c.IsRoot() {
+		return ""
+	}
+	return c.Path[len(c.Path)-1]
+}
+
+// FullName returns a string representing the full path of the instance.
+func (c *Cfg) FullName() string {
+	return "/" + strings.Join(c.Path, "/")
 }
 
 func (c *Cfg) populateParams(src Source) error {

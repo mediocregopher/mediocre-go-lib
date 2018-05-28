@@ -120,3 +120,25 @@ func TestPopulateParams(t *T) {
 		assert.Equal(t, 3, *c)
 	}
 }
+
+func TestChild(t *T) {
+	cfg := New()
+	assert.True(t, cfg.IsRoot())
+	assert.Equal(t, "", cfg.Name())
+	assert.Equal(t, "/", cfg.FullName())
+
+	foo := cfg.Child("foo")
+	assert.False(t, foo.IsRoot())
+	assert.Equal(t, "foo", foo.Name())
+	assert.Equal(t, "/foo", foo.FullName())
+
+	bar := cfg.Child("bar")
+	assert.False(t, bar.IsRoot())
+	assert.Equal(t, "bar", bar.Name())
+	assert.Equal(t, "/bar", bar.FullName())
+
+	foo2 := foo.Child("foo2")
+	assert.False(t, foo2.IsRoot())
+	assert.Equal(t, "foo2", foo2.Name())
+	assert.Equal(t, "/foo/foo2", foo2.FullName())
+}

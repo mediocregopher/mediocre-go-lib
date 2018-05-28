@@ -124,7 +124,7 @@ func (cli SourceCLI) cliParamVals(cfg *Cfg) (map[string]ParamValue, error) {
 	m := map[string]ParamValue{}
 	for _, param := range cfg.Params {
 		key := cliKeyPrefix
-		if len(cfg.Path) > 0 {
+		if !cfg.IsRoot() {
 			key += strings.Join(cfg.Path, cliKeyJoin) + cliKeyJoin
 		}
 		key += param.Name
