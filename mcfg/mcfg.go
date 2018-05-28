@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 // TODO Sources:
@@ -33,6 +32,9 @@ func (h *Hook) Then(h2 Hook) {
 	*h = func(ctx context.Context) error {
 		if err := oldh(ctx); err != nil {
 			return err
+		} else if err := ctx.Err(); err != nil {
+			// in case the previous hook doesn't respect the context
+			return err
 		}
 		return h2(ctx)
 	}
@@ -48,8 +50,11 @@ func (h *Hook) Also(h2 Hook) {
 		go func() {
 			errCh <- oldh(ctx)
 		}()
-		err := h2(ctx)
-		if err := <-errCh; err != nil {
+		err := h2(ctx) // don't immediately return this, wait for h2 or ctx
+		if err := ctx.Err(); err != nil {
+			// in case the previous hook doesn't respect the context
+			return err
+		} else if err := <-errCh; err != nil {
 			return err
 		}
 		return err
@@ -100,28 +105,18 @@ type Cfg struct {
 	// separate go-routine
 	Start Hook
 
-	// Default 2 minutes. Timeout within which the Start Hook (and the Start
-	// Hooks of all children of this Cfg) must complete.
-	StartTimeout time.Duration
-
 	// Stop hook is performed on interrupt signal, and should stop all
 	// go-routines and close all resource handlers created during Start
 	Stop Hook
-
-	// Default 30 seconds. Timeout within which the Stop Hook (and the Stop
-	// Hooks of all children of this Cfg) must complete.
-	StopTimeout time.Duration
 }
 
 // New initializes and returns an empty Cfg with default values filled in
 func New() *Cfg {
 	return &Cfg{
-		Children:     map[string]*Cfg{},
-		Params:       map[string]Param{},
-		Start:        Nop(),
-		StartTimeout: 2 * time.Minute,
-		Stop:         Nop(),
-		StopTimeout:  30 * time.Second,
+		Children: map[string]*Cfg{},
+		Params:   map[string]Param{},
+		Start:    Nop(),
+		Stop:     Nop(),
 	}
 }
 
@@ -196,42 +191,33 @@ func (c *Cfg) runPreBlock(ctx context.Context, src Source) error {
 		return err
 	}
 
-	startCtx, cancel := context.WithTimeout(ctx, c.StartTimeout)
-	defer cancel()
-	return c.Start(startCtx)
+	return c.Start(ctx)
 }
 
-// Run blocks while performing all steps of a Cfg run. The steps, in order, are;
+// StartRun blocks while performing all steps of a Cfg run. The steps, in order,
+// are:
 // * Populate all configuration parameters
-// * Recursively perform Start hooks, depth first
-// * Block till the passed in context is cancelled
-// * Recursively perform Stop hooks, depth first
+// * Perform Start hooks
 //
 // If any step returns an error then everything returns that error immediately.
-//
-// A caveat about Run is that the error case doesn't leave a lot of room for a
-// proper cleanup. If you care about that sort of thing you'll need to handle it
-// yourself.
-func (c *Cfg) Run(ctx context.Context, src Source) error {
-	if err := c.runPreBlock(ctx, src); err != nil {
-		return err
-	}
-
-	<-ctx.Done()
-
-	stopCtx, cancel := context.WithTimeout(context.Background(), c.StopTimeout)
-	defer cancel()
-	return c.Stop(stopCtx)
+func (c *Cfg) StartRun(ctx context.Context, src Source) error {
+	return c.runPreBlock(ctx, src)
 }
 
-// TestRun is like Run, except it's intended to only be used during tests to
-// initialize other entities which are going to actually be tested. It assumes
-// all default configuration param values, and will return after the Start hook
-// has completed. It will panic on any errors.
-func (c *Cfg) TestRun() {
+// StartTestRun is like StartRun, except it's intended to only be used during
+// tests to initialize other entities which are going to actually be tested. It
+// assumes all default configuration param values, and will return after the
+// Start hook has completed. It will panic on any errors.
+func (c *Cfg) StartTestRun() {
 	if err := c.runPreBlock(context.Background(), nil); err != nil {
 		panic(err)
 	}
+}
+
+// StopRun blocks while calling the Stop hook of the Cfg, returning any error
+// that it does.
+func (c *Cfg) StopRun(ctx context.Context) error {
+	return c.Stop(ctx)
 }
 
 // Child returns a sub-Cfg of the callee with the given name. The name will be

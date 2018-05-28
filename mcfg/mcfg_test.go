@@ -25,7 +25,7 @@ func TestHook(t *T) {
 		})
 		errCh := make(chan error)
 		go func() {
-			errCh <- h(nil)
+			errCh <- h(context.Background())
 		}()
 
 		assert.True(t, <-aCh)
@@ -63,7 +63,7 @@ func TestHook(t *T) {
 		})
 		errCh := make(chan error)
 		go func() {
-			errCh <- h(nil)
+			errCh <- h(context.Background())
 		}()
 
 		// both channels should get written to, then closed, then errCh should

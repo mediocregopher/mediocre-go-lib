@@ -16,7 +16,7 @@ var testPS *PubSub
 func init() {
 	cfg := mcfg.New()
 	testPS = CfgPubSub(cfg, "test")
-	cfg.TestRun()
+	cfg.StartTestRun()
 }
 
 // this requires the pubsub emulator to be running
