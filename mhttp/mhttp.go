@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 )
@@ -21,12 +22,13 @@ func CfgServer(cfg *mcfg.Cfg, h http.Handler) *http.Server {
 	cfg.Start.Then(func(ctx context.Context) error {
 		srv.Addr = *addr
 		kv := mlog.KV{"addr": *addr}
-		mlog.Info("HTTP server listening", kv)
+		log := m.Log(cfg, kv)
+		log.Info("listening")
 		go func() {
 			err := srv.ListenAndServe()
 			// TODO the listening log should happen here, somehow, now that we
 			// know the actual address being listened on
-			mlog.Fatal("http server fataled", kv, mlog.ErrKV(err))
+			log.Fatal("http server fataled", mlog.ErrKV(err))
 		}()
 		return nil
 	})

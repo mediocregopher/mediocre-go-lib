@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	oldctx "golang.org/x/net/context"
@@ -31,6 +32,8 @@ type Message = pubsub.Message
 type PubSub struct {
 	proj, credFile string
 	*pubsub.Client
+
+	log *mlog.Logger
 }
 
 // NewPubSub initializes and returns PubSub instance for the given projectID and
@@ -40,9 +43,10 @@ func NewPubSub(ctx context.Context, projectID, credFile string) (*PubSub, error)
 		proj:     projectID,
 		credFile: credFile,
 	}
+	ps.log = mlog.DefaultLogger.WithKV(ps.KV())
 	var err error
 	ps.Client, err = pubsub.NewClient(ctx, ps.proj, ps.clientOpts()...)
-	return ps, err
+	return ps, mlog.ErrWithKV(err, ps)
 }
 
 // CfgPubSub configures and returns a PubSub instance which will be usable once
@@ -59,12 +63,14 @@ func CfgPubSub(cfg *mcfg.Cfg, defaultProject string) *PubSub {
 	cfg.Start.Then(func(ctx context.Context) error {
 		ps.proj = *proj
 		ps.credFile = *credFile
-		mlog.Info("connecting to pubsub", &ps)
+		log := m.Log(cfg, ps.KV())
+		log.Info("connecting to pubsub")
 		psInner, err := NewPubSub(ctx, *proj, *credFile)
 		if err != nil {
 			return mlog.ErrWithKV(err, &ps)
 		}
 		ps = *psInner
+		ps.log = log
 		return nil
 	})
 	return &ps
@@ -235,7 +241,7 @@ func (s *Subscription) Consume(ctx context.Context, fn ConsumerFunc, opts Consum
 
 			ok, err := fn(context.Context(innerCtx), msg)
 			if err != nil {
-				mlog.Warn("error consuming pubsub message", s, mlog.ErrKV(err))
+				s.topic.ps.log.Warn("error consuming pubsub message", s, mlog.ErrKV(err))
 			}
 
 			if ok {
@@ -247,7 +253,7 @@ func (s *Subscription) Consume(ctx context.Context, fn ConsumerFunc, opts Consum
 		if octx.Err() == context.Canceled || err == nil {
 			return
 		} else if err != nil {
-			mlog.Warn("error consuming from pubsub", s, mlog.ErrKV(err))
+			s.topic.ps.log.Warn("error consuming from pubsub", s, mlog.ErrKV(err))
 		}
 	}
 }
@@ -339,7 +345,7 @@ func (s *Subscription) BatchConsume(
 				}
 				ret, err := fn(thisCtx, msgs)
 				if err != nil {
-					mlog.Warn("error consuming pubsub batch messages", s, mlog.ErrKV(err))
+					s.topic.ps.log.Warn("error consuming pubsub batch messages", s, mlog.ErrKV(err))
 				}
 				for i := range thisGroup {
 					thisGroup[i].retCh <- ret // retCh is buffered
