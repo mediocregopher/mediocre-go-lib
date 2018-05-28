@@ -15,6 +15,7 @@
 package mlog
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -124,17 +125,37 @@ func (kv KV) Set(k string, v interface{}) KV {
 	return nkv
 }
 
-// separate from Merge because it's convenient to not return a KVer if that KVer
-// is going to immediately have KV called on it (and thereby create a copy for
-// no reason).
-func merge(kvs ...KVer) KV {
-	kvm := kvs[0].KV()
-	for _, kv := range kvs[1:] {
+// separate from MergeInto because it's convenient to not return a KVer if that
+// KVer is going to immediately have KV called on it (and thereby create a copy
+// for no reason).
+//
+// this may take in any amount of nil values, but should never return nil
+func mergeInto(kv KVer, kvs ...KVer) KV {
+	if kv == nil {
+		kv = KV(nil) // will return empty map when KV is called on it
+	}
+	kvm := kv.KV()
+	for _, kv := range kvs {
+		if kv == nil {
+			continue
+		}
 		for k, v := range kv.KV() {
 			kvm[k] = v
 		}
 	}
-	return KV(kvm)
+	return kvm
+}
+
+// separate from Merge because it's convenient to not return a KVer if that KVer
+// is going to immediately have KV called on it (and thereby create a copy for
+// no reason).
+//
+// this may take in any amount of nil values, but should never return nil
+func merge(kvs ...KVer) KV {
+	if len(kvs) == 0 {
+		return KV{}
+	}
+	return mergeInto(kvs[0], kvs[1:]...)
 }
 
 // Merge takes in multiple KVers and returns a single KVer which is the union of
@@ -142,6 +163,11 @@ func merge(kvs ...KVer) KV {
 // over conflicting ones to the left.
 func Merge(kvs ...KVer) KVer {
 	return merge(kvs...)
+}
+
+// MergeInto is a convenience function which acts similarly to Merge.
+func MergeInto(kv KVer, kvs ...KVer) KVer {
+	return mergeInto(kv, kvs...)
 }
 
 // Message describes a message to be logged, after having already resolved the
@@ -153,8 +179,8 @@ type Message struct {
 }
 
 // WriteFn describes a function which formats a single log message and writes it
-// to the given io.Writer. If the io.Writer returns an error this should return
-// that error.
+// to the given io.Writer. If the io.Writer returns an error WriteFn should
+// return that error.
 type WriteFn func(w io.Writer, msg Message) error
 
 func stringSlice(kv KV) [][2]string {
@@ -190,102 +216,122 @@ func DefaultWriteFn(w io.Writer, msg Message) error {
 	return err
 }
 
+type msg struct {
+	buf *bytes.Buffer
+	msg Message
+}
+
 // Logger wraps a WriteFn and an io.WriteCloser such that logging calls on the
 // Logger will use them (in a thread-safe manner) to write out log messages.
-//
-// Logger will auto-initialize itself on the first method call.
 type Logger struct {
-	WriteFn        // Defaults to DefaultWriteFn
-	io.WriteCloser // Defaults to os.Stderr
+	wc       io.WriteCloser
+	wfn      WriteFn
+	maxLevel uint
+	kv       KV
 
-	levelL      sync.RWMutex
-	maxLevel    uint
-	maxLevelSet bool
-
-	init             sync.Once
-	msgCh            chan Message
+	msgBufPool       *sync.Pool
+	msgCh            chan msg
 	testMsgWrittenCh chan struct{} // only initialized/used in tests
 }
 
-func (l *Logger) getMaxLevel() uint {
-	l.levelL.RLock()
-	defer l.levelL.RUnlock()
-	if !l.maxLevelSet {
-		return InfoLevel.Uint()
+// NewLogger initializes and returns a new instance of Logger which will write
+// to the given WriteCloser.
+func NewLogger(wc io.WriteCloser) *Logger {
+	l := &Logger{
+		wc:  wc,
+		wfn: DefaultWriteFn,
+		msgBufPool: &sync.Pool{
+			New: func() interface{} {
+				return new(bytes.Buffer)
+			},
+		},
+		msgCh:    make(chan msg, 1024),
+		maxLevel: InfoLevel.Uint(),
 	}
-	return l.maxLevel
+	go l.spin()
+	return l
 }
 
-// SetMaxLevelUint sets the maximum (up-to-and-including) level priority which
-// the Logger will output a log for. Any Levels with an Uint value higher than
-// this will not be logged. This may be called at any time.
-func (l *Logger) SetMaxLevelUint(i uint) {
-	l.levelL.Lock()
-	l.maxLevel = i
-	l.maxLevelSet = true
-	l.levelL.Unlock()
-}
-
-// SetMaxLevel sets the maximum (up-to-and-including) Level which the Logger
-// will output a log for. Any Levels whose Uint value is higher than this one's
-// will not be logged. This may be called at any time.
-func (l *Logger) SetMaxLevel(lvl Level) {
-	l.SetMaxLevelUint(lvl.Uint())
+func (l *Logger) cp() *Logger {
+	l2 := *l
+	return &l2
 }
 
 func (l *Logger) spin() {
 	for msg := range l.msgCh {
-		if err := l.WriteFn(l.WriteCloser, msg); err != nil {
-			go l.Error("could not write to Logger.WriteCloser", ErrKV(err))
+		if _, err := io.Copy(l.wc, msg.buf); err != nil {
+			go l.Error("error writing to Logger's WriteCloser", ErrKV(err))
 		}
+		l.msgBufPool.Put(msg.buf)
 		if l.testMsgWrittenCh != nil {
 			l.testMsgWrittenCh <- struct{}{}
 		}
-		if msg.Level.Uint() == 0 {
-			l.WriteCloser.Close()
+		if msg.msg.Level.Uint() == 0 {
+			l.wc.Close()
 			os.Exit(1)
 		}
 	}
-	l.WriteCloser.Close()
+	l.wc.Close()
 }
 
-func (l *Logger) initDo() {
-	l.init.Do(func() {
-		if l.WriteFn == nil {
-			l.WriteFn = DefaultWriteFn
-		}
-		if l.WriteCloser == nil {
-			l.WriteCloser = os.Stderr
-		}
-		// maxLevel's default is implicitly handled by getMaxLevel
-		l.msgCh = make(chan Message, 1000)
-		go l.spin()
-	})
+// WithMaxLevelUint returns a copy of the Logger with its max logging level set
+// to the given uint. The Logger will not log any messages with a higher
+// Level.Uint value.
+func (l *Logger) WithMaxLevelUint(i uint) *Logger {
+	l = l.cp()
+	l.maxLevel = i
+	return l
+}
+
+// WithMaxLevel returns a copy of the Logger with its max Level set to the given
+// one. The Logger will not log any messages with a higher Level.Uint value.
+func (l *Logger) WithMaxLevel(lvl Level) *Logger {
+	return l.WithMaxLevelUint(lvl.Uint())
+}
+
+// WithWriteFn returns a copy of the Logger which will use the given WriteFn
+// to format and write Messages to the Logger's WriteCloser. This does not
+// affect the WriteFn of the original Logger, and both can be used at the same
+// time.
+func (l *Logger) WithWriteFn(wfn WriteFn) *Logger {
+	l = l.cp()
+	l.wfn = wfn
+	return l
+}
+
+// WithKV returns a copy of Logger which will implicitly use the KVers for all
+// log messages.
+func (l *Logger) WithKV(kvs ...KVer) *Logger {
+	l = l.cp()
+	l.kv = mergeInto(l.kv, kvs...)
+	return l
 }
 
 // Stop stops and cleans up any running go-routines and resources held by the
 // Logger, allowing it to be garbage-collected. The Logger should not be used
 // after Stop is called
 func (l *Logger) Stop() {
-	l.initDo()
 	close(l.msgCh)
 }
 
 // Log can be used to manually log a message of some custom defined Level. kvs
 // will be Merge'd automatically. If the Level is a fatal (Uint() == 0) then
 // calling this will never return, and the process will have os.Exit(1) called.
-func (l *Logger) Log(lvl Level, msg string, kvs ...KVer) {
-	if maxLevel := l.getMaxLevel(); maxLevel < lvl.Uint() {
+func (l *Logger) Log(lvl Level, msgStr string, kvs ...KVer) {
+	if l.maxLevel < lvl.Uint() {
 		return
 	}
 
-	var kv KV
-	if len(kvs) > 0 {
-		kv = merge(kvs...)
+	m := Message{Level: lvl, Msg: msgStr, KV: mergeInto(l.kv, kvs...)}
+	buf := l.msgBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	if err := l.wfn(buf, m); err != nil {
+		// TODO welp, hopefully this doesn't infinite loop
+		l.Log(ErrorLevel, "Logger could not write to WriteCloser", ErrKV(err))
+		return
 	}
 
-	l.initDo()
-	l.msgCh <- Message{Level: lvl, Msg: msg, KV: kv}
+	l.msgCh <- msg{buf: buf, msg: m}
 
 	// if a Fatal is logged then we're merely waiting here for spin to call
 	// os.Exit, and this go-routine shouldn't be allowed to continue
@@ -326,7 +372,7 @@ func (l *Logger) Fatal(msg string, kvs ...KVer) {
 // till the first time it is called any of DefaultLogger's fields may be
 // modified before using one of the Debug, Info, Warn, etc... global functions.
 var (
-	DefaultLogger = new(Logger)
+	DefaultLogger = NewLogger(os.Stderr)
 	Debug         = DefaultLogger.Debug
 	Info          = DefaultLogger.Info
 	Warn          = DefaultLogger.Warn

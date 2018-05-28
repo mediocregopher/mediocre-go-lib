@@ -12,15 +12,18 @@ type kvKey int
 
 // ErrWithKV embeds the merging of a set of KVs into an error, returning a new
 // error instance. If the error already has a KV embedded in it then the
-// returned error will have the merging of them all.
+// returned error will have the merging of them all, with the given KVs taking
+// precedence.
 func ErrWithKV(err error, kvs ...KVer) merry.Error {
 	if err == nil {
 		return nil
 	}
 	merr := merry.WrapSkipping(err, 1)
-	kv := merge(kvs...)
+	var kv KV
 	if exKV := merry.Value(merr, kvKey(0)); exKV != nil {
-		kv = merge(exKV.(KV), kv)
+		kv = mergeInto(exKV.(KV), kvs...)
+	} else {
+		kv = merge(kvs...)
 	}
 	return merr.WithValue(kvKey(0), kv)
 }
@@ -47,12 +50,14 @@ func ErrKV(err error) KVer {
 
 // CtxWithKV embeds a KV into a Context, returning a new Context instance. If
 // the Context already has a KV embedded in it then the returned error will have
-// the merging of the two.
+// the merging of the two, with the given KVs taking precedence.
 func CtxWithKV(ctx context.Context, kvs ...KVer) context.Context {
-	kv := merge(kvs...)
 	existingKV := ctx.Value(kvKey(0))
+	var kv KV
 	if existingKV != nil {
-		kv = merge(existingKV.(KV), kv)
+		kv = mergeInto(existingKV.(KV), kvs...)
+	} else {
+		kv = merge(kvs...)
 	}
 	return context.WithValue(ctx, kvKey(0), kv)
 }

@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"regexp"
+	"strings"
 	. "testing"
 	"time"
 
@@ -34,26 +35,18 @@ func TestKV(t *T) {
 	kv2 = kv.Set("bar", "wat")
 	assert.Equal(t, KV{"foo": "a"}, kv)
 	assert.Equal(t, KV{"foo": "a", "bar": "wat"}, kv2)
-
-	assert.Equal(t, KV{"foo": "a", "bar": "b"}, Merge(
-		KV{"foo": "aaaaa"},
-		KV{"foo": "a", "bar": "bbbbb"},
-		KV{"bar": "b"},
-	))
 }
 
 func TestLLog(t *T) {
 	buf := new(bytes.Buffer)
-	l := &Logger{
-		WriteCloser: struct {
-			io.Writer
-			io.Closer
-		}{
-			Writer: buf,
-			Closer: ioutil.NopCloser(nil),
-		},
-		testMsgWrittenCh: make(chan struct{}, 10),
-	}
+	l := NewLogger(struct {
+		io.Writer
+		io.Closer
+	}{
+		Writer: buf,
+		Closer: ioutil.NopCloser(nil),
+	})
+	l.testMsgWrittenCh = make(chan struct{}, 10)
 
 	assertOut := func(expected string) {
 		select {
@@ -75,13 +68,28 @@ func TestLLog(t *T) {
 	assertOut("~ WARN -- baz\n")
 	assertOut("~ ERROR -- buz\n")
 
-	l.SetMaxLevel(WarnLevel)
-	l.Log(DebugLevel, "foo")
-	l.Log(InfoLevel, "bar")
-	l.Log(WarnLevel, "baz")
-	l.Log(ErrorLevel, "buz", KV{"a": "b"})
-	assertOut("~ WARN -- baz\n")
-	assertOut("~ ERROR -- buz -- a=\"b\"\n")
+	{
+		l := l.WithMaxLevel(WarnLevel)
+		l.Log(DebugLevel, "foo")
+		l.Log(InfoLevel, "bar")
+		l.Log(WarnLevel, "baz")
+		l.Log(ErrorLevel, "buz", KV{"a": "b"})
+		assertOut("~ WARN -- baz\n")
+		assertOut("~ ERROR -- buz -- a=\"b\"\n")
+	}
+
+	{
+		l2 := l.WithWriteFn(func(w io.Writer, msg Message) error {
+			msg.Msg = strings.ToUpper(msg.Msg)
+			return DefaultWriteFn(w, msg)
+		})
+		l2.Log(InfoLevel, "bar")
+		l2.Log(WarnLevel, "baz")
+		l.Log(ErrorLevel, "buz")
+		assertOut("~ INFO -- BAR\n")
+		assertOut("~ WARN -- BAZ\n")
+		assertOut("~ ERROR -- buz\n")
+	}
 }
 
 func TestDefaultWriteFn(t *T) {
@@ -105,4 +113,32 @@ func TestDefaultWriteFn(t *T) {
 
 	msg.KV = KV{"foo": "a", "bar": "b"}.KV()
 	assertFormat("INFO -- this is a test -- bar=\"b\" foo=\"a\"", msg)
+}
+
+func TestMerge(t *T) {
+	assertMerge := func(exp KV, kvs ...KVer) {
+		got := merge(kvs...)
+		assert.Equal(t, exp, got)
+	}
+
+	assertMerge(KV{})
+	assertMerge(KV{}, nil)
+	assertMerge(KV{}, nil, nil)
+
+	assertMerge(KV{"a": "a"}, KV{"a": "a"})
+	assertMerge(KV{"a": "a"}, nil, KV{"a": "a"})
+	assertMerge(KV{"a": "a"}, KV{"a": "a"}, nil)
+
+	assertMerge(
+		KV{"a": "a", "b": "b"},
+		KV{"a": "a"}, KV{"b": "b"},
+	)
+	assertMerge(
+		KV{"a": "a", "b": "b"},
+		KV{"a": "a"}, KV{"b": "b"},
+	)
+	assertMerge(
+		KV{"a": "b"},
+		KV{"a": "a"}, KV{"a": "b"},
+	)
 }
