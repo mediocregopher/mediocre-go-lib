@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ func init() {
 
 // this requires the pubsub emulator to be running
 func TestPubSub(t *T) {
-	topicName := "testTopic_" + mtest.RandHex(8)
+	topicName := "testTopic_" + mrand.Hex(8)
 	ctx := context.Background()
 
 	// Topic shouldn't exist yet
@@ -51,7 +51,7 @@ func TestPubSub(t *T) {
 
 func TestBatchPubSub(t *T) {
 	ctx := context.Background()
-	topicName := "testBatchTopic_" + mtest.RandHex(8)
+	topicName := "testBatchTopic_" + mrand.Hex(8)
 	topic, err := testPS.Topic(ctx, topicName, true)
 	require.NoError(t, err)
 

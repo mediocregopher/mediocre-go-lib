@@ -8,7 +8,7 @@ import (
 	"sync"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,7 +45,7 @@ func TestEncoderDecoder(t *T) {
 	randTestCase = func(typ Type, cancelable bool) testCase {
 		// if typ isn't given then use a random one
 		if typ == "" {
-			pick := mtest.Rand.Intn(5)
+			pick := mrand.Intn(5)
 			switch {
 			case pick == 0:
 				typ = TypeStream
@@ -58,24 +58,24 @@ func TestEncoderDecoder(t *T) {
 
 		tc := testCase{
 			typ:    typ,
-			cancel: cancelable && mtest.Rand.Intn(10) == 0,
+			cancel: cancelable && mrand.Intn(10) == 0,
 		}
 
 		switch typ {
 		case TypeJSONValue:
 			tc.val = map[string]interface{}{
-				mtest.RandHex(8): mtest.RandHex(8),
-				mtest.RandHex(8): mtest.RandHex(8),
-				mtest.RandHex(8): mtest.RandHex(8),
-				mtest.RandHex(8): mtest.RandHex(8),
-				mtest.RandHex(8): mtest.RandHex(8),
+				mrand.Hex(8): mrand.Hex(8),
+				mrand.Hex(8): mrand.Hex(8),
+				mrand.Hex(8): mrand.Hex(8),
+				mrand.Hex(8): mrand.Hex(8),
+				mrand.Hex(8): mrand.Hex(8),
 			}
 			return tc
 		case TypeByteBlob:
-			tc.bytes = mtest.RandBytes(mtest.Rand.Intn(256))
+			tc.bytes = mrand.Bytes(mrand.Intn(256))
 			return tc
 		case TypeStream:
-			for i := mtest.Rand.Intn(10); i > 0; i-- {
+			for i := mrand.Intn(10); i > 0; i-- {
 				tc.stream = append(tc.stream, randTestCase("", true))
 			}
 			return tc

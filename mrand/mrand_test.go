@@ -1,4 +1,4 @@
-package mtest
+package mrand
 
 import (
 	. "testing"
@@ -9,7 +9,7 @@ import (
 func TestRandBytes(t *T) {
 	var prev []byte
 	for i := 0; i < 10000; i++ {
-		curr := RandBytes(16)
+		curr := Bytes(16)
 		assert.Len(t, curr, 16)
 		assert.NotEqual(t, prev, curr)
 		prev = curr
@@ -19,7 +19,7 @@ func TestRandBytes(t *T) {
 func TestRandHex(t *T) {
 	// RandHex is basically a wrapper of RandBytes, so we don't have to test it
 	// much
-	assert.Len(t, RandHex(16), 16)
+	assert.Len(t, Hex(16), 16)
 }
 
 func TestRandElement(t *T) {
@@ -35,7 +35,7 @@ func TestRandElement(t *T) {
 
 	iterations := 100000
 	for i := 0; i < iterations; i++ {
-		el := RandElement(slice, func(i int) uint64 { return slice[i] }).(uint64)
+		el := Element(slice, func(i int) uint64 { return slice[i] }).(uint64)
 		m[el]++
 	}
 

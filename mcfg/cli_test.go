@@ -6,7 +6,7 @@ import (
 	"strconv"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -188,9 +188,9 @@ func TestSourceCLI(t *T) {
 		}
 	}
 
-	childName := mtest.RandHex(8)
-	childDashName := mtest.RandHex(4) + "-" + mtest.RandHex(4)
-	childEqName := mtest.RandHex(4) + "=" + mtest.RandHex(4)
+	childName := mrand.Hex(8)
+	childDashName := mrand.Hex(4) + "-" + mrand.Hex(4)
+	childEqName := mrand.Hex(4) + "=" + mrand.Hex(4)
 
 	var args []string
 	rootCfg := New()
@@ -204,11 +204,11 @@ func TestSourceCLI(t *T) {
 
 		switch tests[i].name {
 		case "normal":
-			pv.Name = mtest.RandHex(8)
+			pv.Name = mrand.Hex(8)
 		case "wDash":
-			pv.Name = mtest.RandHex(4) + "-" + mtest.RandHex(4)
+			pv.Name = mrand.Hex(4) + "-" + mrand.Hex(4)
 		case "wEq":
-			pv.Name = mtest.RandHex(4) + "=" + mtest.RandHex(4)
+			pv.Name = mrand.Hex(4) + "=" + mrand.Hex(4)
 		}
 
 		pv.IsBool = tests[i].isBool
@@ -242,18 +242,18 @@ func TestSourceCLI(t *T) {
 		var val string
 		switch tests[i].nonBoolType {
 		case "int":
-			val = strconv.Itoa(mtest.Rand.Int())
+			val = strconv.Itoa(mrand.Int())
 			pv.Value = json.RawMessage(val)
 		case "str":
 			switch tests[i].nonBoolStrValue {
 			case "empty":
 				// ez
 			case "normal":
-				val = mtest.RandHex(8)
+				val = mrand.Hex(8)
 			case "wDash":
-				val = mtest.RandHex(4) + "-" + mtest.RandHex(4)
+				val = mrand.Hex(4) + "-" + mrand.Hex(4)
 			case "wEq":
-				val = mtest.RandHex(4) + "=" + mtest.RandHex(4)
+				val = mrand.Hex(4) + "=" + mrand.Hex(4)
 			}
 			pv.Value = json.RawMessage(`"` + val + `"`)
 		}

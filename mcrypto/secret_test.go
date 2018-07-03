@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"github.com/ansel1/merry"
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSecretSignVerify(t *T) {
-	secretRaw := mtest.RandBytes(16)
+	secretRaw := mrand.Bytes(16)
 	secret := NewSecret(secretRaw)
 	weakSecret := NewWeakSecret(secretRaw)
 	var prevStr string
@@ -20,7 +20,7 @@ func TestSecretSignVerify(t *T) {
 		secret.testNow = now
 		weakSecret.testNow = now
 
-		thisStr := mtest.RandHex(512)
+		thisStr := mrand.Hex(512)
 		thisSig := SignString(secret, thisStr)
 		thisWeakSig := SignString(weakSecret, thisStr)
 		thisSigStr, thisWeakSigStr := thisSig.String(), thisWeakSig.String()

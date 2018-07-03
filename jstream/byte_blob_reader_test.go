@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,16 +23,16 @@ func randBBRTest(minBodySize, maxBodySize int) bbrTest {
 	genWhitespace := func(n int) []byte {
 		ws := make([]byte, n)
 		for i := range ws {
-			ws[i] = whitespace[mtest.Rand.Intn(len(whitespace))]
+			ws[i] = whitespace[mrand.Intn(len(whitespace))]
 		}
 		return ws
 	}
 
-	body := mtest.RandBytes(minBodySize + mtest.Rand.Intn(maxBodySize-minBodySize))
+	body := mrand.Bytes(minBodySize + mrand.Intn(maxBodySize-minBodySize))
 	return bbrTest{
-		wsSuffix: genWhitespace(mtest.Rand.Intn(10)),
+		wsSuffix: genWhitespace(mrand.Intn(10)),
 		body:     body,
-		intoSize: 1 + mtest.Rand.Intn(len(body)+1),
+		intoSize: 1 + mrand.Intn(len(body)+1),
 	}
 }
 

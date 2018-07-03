@@ -5,19 +5,19 @@ import (
 	"time"
 
 	"github.com/ansel1/merry"
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSignerVerifier(t *T) {
-	secret := NewSecret(mtest.RandBytes(16))
+	secret := NewSecret(mrand.Bytes(16))
 	var prevStr string
 	var prevSig Signature
 	for i := 0; i < 10000; i++ {
 		now := time.Now().Round(0)
 		secret.testNow = now
 
-		thisStr := mtest.RandHex(512)
+		thisStr := mrand.Hex(512)
 		thisSig := SignString(secret, thisStr)
 		thisSigStr := thisSig.String()
 

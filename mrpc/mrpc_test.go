@@ -4,7 +4,7 @@ import (
 	"context"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,14 +28,14 @@ func TestReflectClient(t *T) {
 		}))
 
 		{ // test with arg being non-pointer
-			in := mtest.RandHex(8)
+			in := mrand.Hex(8)
 			var res resT
 			assert.NoError(t, client.CallRPC(ctx, &res, "foo", argT{In: in}))
 			assert.Equal(t, in, res.Out)
 		}
 
 		{ // test with arg being pointer
-			in := mtest.RandHex(8)
+			in := mrand.Hex(8)
 			var res resT
 			assert.NoError(t, client.CallRPC(ctx, &res, "foo", &argT{In: in}))
 			assert.Equal(t, in, res.Out)
@@ -51,14 +51,14 @@ func TestReflectClient(t *T) {
 		}))
 
 		{ // test with arg being non-pointer
-			in := mtest.RandHex(8)
+			in := mrand.Hex(8)
 			var res resT
 			assert.NoError(t, client.CallRPC(ctx, &res, "foo", argT{In: in}))
 			assert.Equal(t, in, res.Out)
 		}
 
 		{ // test with arg being pointer
-			in := mtest.RandHex(8)
+			in := mrand.Hex(8)
 			var res resT
 			assert.NoError(t, client.CallRPC(ctx, &res, "foo", &argT{In: in}))
 			assert.Equal(t, in, res.Out)
