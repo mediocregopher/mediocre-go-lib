@@ -1,24 +1,135 @@
 package massert
 
-import . "testing"
+import (
+	"errors"
+	. "testing"
+)
 
-func TestAssertions(t *T) {
-	a := Equal(1, 1)
-	b := Equal(2, 2)
-	if err := (Assertions{a, b}).Assert(); err != nil {
-		t.Fatalf("first Assertions shouldn't return error, returned: %s", err)
+func succeed() Assertion {
+	return newAssertion(func() error { return nil }, "Succeed", 0)
+}
+
+func fail() Assertion {
+	return newAssertion(func() error { return errors.New("failure") }, "Fail", 0)
+}
+
+func TestNot(t *T) {
+	if err := Not(succeed()).Assert(); err == nil {
+		t.Fatal("Not(succeed()) should have failed")
 	}
 
-	c := Comment(Equal(3, 3), "this part would succeed")
-	c = Comment(Not(c), "but it's being wrapped in a not, so it then won't")
-
-	aa := New()
-	aa.Add(a)
-	aa.Add(b)
-	aa.Add(c)
-	err := aa.Assert()
-	if err == nil {
-		t.Fatalf("second Assertions should have returned an error, returned nil")
+	if err := Not(fail()).Assert(); err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("got expected second Assertions error:\n%s", err)
+}
+
+func TestAny(t *T) {
+	if err := Any().Assert(); err == nil {
+		t.Fatal("empty Any should fail")
+	}
+
+	if err := Any(succeed(), succeed()).Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Any(succeed(), fail()).Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Any(fail(), fail()).Assert(); err == nil {
+		t.Fatal("Any should have failed with all inner fail Assertions")
+	}
+}
+
+func TestAnyOne(t *T) {
+	if err := AnyOne().Assert(); err == nil {
+		t.Fatal("empty AnyOne should fail")
+	}
+
+	if err := AnyOne(succeed(), succeed()).Assert(); err == nil {
+		t.Fatal("AnyOne with two succeeds should fail")
+	}
+
+	if err := AnyOne(succeed(), fail()).Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := AnyOne(fail(), fail()).Assert(); err == nil {
+		t.Fatal("AnyOne should have failed with all inner fail Assertions")
+	}
+}
+
+func TestAll(t *T) {
+	if err := All().Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := All(succeed(), succeed()).Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := All(succeed(), fail()).Assert(); err == nil {
+		t.Fatal("All should have failed with one inner fail Assertion")
+	}
+
+	if err := All(fail(), fail()).Assert(); err == nil {
+		t.Fatal("All should have failed with all inner fail Assertions")
+	}
+}
+
+func TestNone(t *T) {
+	if err := None().Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := None(succeed(), succeed()).Assert(); err == nil {
+		t.Fatal("None should have failed with all inner succeed Assertions")
+	}
+
+	if err := None(succeed(), fail()).Assert(); err == nil {
+		t.Fatal("None should have failed with one inner succeed Assertion")
+	}
+
+	if err := None(fail(), fail()).Assert(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TODO pointers, structs, slices, maps, nils
+func TestEqual(t *T) {
+	if err := All(
+		Equal(1, 1),
+		Equal(1, int64(1)),
+		Equal(1, uint64(1)),
+		Equal("foo", "foo"),
+	).Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := None(
+		Equal(1, 2),
+		Equal(1, int64(2)),
+		Equal(1, uint64(2)),
+		Equal("foo", "bar"),
+	).Assert(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExactly(t *T) {
+	if err := All(
+		Exactly(1, 1),
+		Exactly("foo", "foo"),
+	).Assert(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := None(
+		Exactly(1, 2),
+		Exactly(1, int64(1)),
+		Exactly(1, uint64(1)),
+		Exactly("foo", "bar"),
+	).Assert(); err != nil {
+		t.Fatal(err)
+	}
 }

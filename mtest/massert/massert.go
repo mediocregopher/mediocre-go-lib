@@ -26,6 +26,23 @@ func fmtBlock(str string) string {
 	return "\n\t" + strings.Replace(str, "\n", "\n\t", -1) + "\n"
 }
 
+func fmtMultiDescr(prefix string, aa ...Assertion) string {
+	if len(aa) == 0 {
+		return prefix + "()"
+	} else if len(aa) == 1 {
+		return prefix + "(" + fmtBlock(aa[0].Description()) + ")"
+	}
+
+	buf := new(bytes.Buffer)
+	fmt.Fprintf(buf, "%s(\n", prefix)
+	for _, a := range aa {
+		descrStr := "\t" + strings.Replace(a.Description(), "\n", "\n\t", -1)
+		fmt.Fprintf(buf, "%s,\n", descrStr)
+	}
+	fmt.Fprintf(buf, ")")
+	return buf.String()
+}
+
 func fmtStack(frames []runtime.Frame) string {
 	buf := new(bytes.Buffer)
 	tw := tabwriter.NewWriter(buf, 0, 4, 2, ' ', 0)
@@ -41,6 +58,7 @@ func fmtStack(frames []runtime.Frame) string {
 
 func (ae AssertErr) Error() string {
 	buf := new(bytes.Buffer)
+	fmt.Fprintf(buf, "\n")
 	fmt.Fprintf(buf, "Assertion: %s\n", fmtBlock(ae.Assertion.Description()))
 	fmt.Fprintf(buf, "Error: %s\n", fmtBlock(ae.Err.Error()))
 	fmt.Fprintf(buf, "Stack: %s\n", fmtBlock(fmtStack(ae.Assertion.Stack())))
@@ -93,6 +111,8 @@ func newAssertion(assertFn func() error, descr string, skip int) Assertion {
 		err := assertFn()
 		if err == nil {
 			return nil
+		} else if ae, ok := err.(AssertErr); ok {
+			return ae
 		}
 		return AssertErr{
 			Err:       err,
@@ -112,31 +132,6 @@ func (a *assertion) Description() string {
 
 func (a *assertion) Stack() []runtime.Frame {
 	return a.stack
-}
-
-// Assertions represents a set of Assertions which can be tested all at once.
-type Assertions []Assertion
-
-// New returns an empty set of Assertions which can be Add'd to.
-func New() Assertions {
-	return make(Assertions, 0, 8)
-}
-
-// Add adds the given Assertion to the set.
-func (aa *Assertions) Add(a Assertion) {
-	(*aa) = append(*aa, a)
-}
-
-// Assert performs the Assert method of each of the set's Assertions
-// sequentially, stopping at the first error and generating a new one which
-// includes the Assertion's string and stack information.
-func (aa Assertions) Assert() error {
-	for _, a := range aa {
-		if err := a.Assert(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,7 +163,7 @@ func (dw descrWrap) Description() string {
 	return dw.descr
 }
 
-// Comment prepends a formatted string to the given Assertions string
+// Comment prepends a formatted string to the given Assertion's string
 // description.
 func Comment(a Assertion, msg string, args ...interface{}) Assertion {
 	msg = strings.TrimSpace(msg)
@@ -177,28 +172,86 @@ func Comment(a Assertion, msg string, args ...interface{}) Assertion {
 	return wrap{descrWrap{Assertion: a, descr: descr}}
 }
 
-type not struct {
-	Assertion
-}
-
-func (n not) Assert() error {
-	if err := n.Assertion.Assert(); err == nil {
-		return AssertErr{
-			Err:       errors.New("assertion should have failed"),
-			Assertion: n,
-		}
-	}
-	return nil
-}
-
-func (n not) Description() string {
-	return "not(" + fmtBlock(n.Assertion.Description()) + ")"
-}
-
 // Not negates an Assertion, so that it fails if the given Assertion does not,
 // and vice-versa.
 func Not(a Assertion) Assertion {
-	return not{Assertion: a}
+	fn := func() error {
+		if err := a.Assert(); err == nil {
+			return errors.New("assertion should have failed")
+		}
+		return nil
+	}
+	return newAssertion(fn, fmtMultiDescr("Not", a), 0)
+}
+
+// Any asserts that at least one of the given Assertions succeeds.
+func Any(aa ...Assertion) Assertion {
+	fn := func() error {
+		for _, a := range aa {
+			if err := a.Assert(); err == nil {
+				return nil
+			}
+		}
+		return errors.New("no assertions succeeded")
+	}
+	return newAssertion(fn, fmtMultiDescr("Any", aa...), 0)
+}
+
+// AnyOne asserts that exactly one of the given Assertions succeeds.
+func AnyOne(aa ...Assertion) Assertion {
+	fn := func() error {
+		any := -1
+		for i, a := range aa {
+			if err := a.Assert(); err == nil {
+				if any >= 0 {
+					return fmt.Errorf("assertions indices %d and %d both succeeded", any, i)
+				}
+				any = i
+			}
+		}
+		if any == -1 {
+			return errors.New("no assertions succeeded")
+		}
+		return nil
+	}
+	return newAssertion(fn, fmtMultiDescr("AnyOne", aa...), 0)
+}
+
+// All asserts that at all of the given Assertions succeed. Its Assert method
+// will return the error of whichever Assertion failed.
+func All(aa ...Assertion) Assertion {
+	fn := func() error {
+		for _, a := range aa {
+			if err := a.Assert(); err != nil {
+				// newAssertion will pass this error through, so that its
+				// description and callstack is what gets displayed as the
+				// error. This isn't totally consistent with Any's behavior, but
+				// it's fine.
+				return err
+			}
+		}
+		return nil
+	}
+	return newAssertion(fn, fmtMultiDescr("All", aa...), 0)
+}
+
+// None asserts that all of the given Assertions fail.
+//
+// NOTE this is functionally equivalent to doing `Not(Any(aa...))`, but the
+// error returned is more helpful.
+func None(aa ...Assertion) Assertion {
+	fn := func() error {
+		for _, a := range aa {
+			if err := a.Assert(); err == nil {
+				return AssertErr{
+					Err:       errors.New("assertion should not have succeeded"),
+					Assertion: a,
+				}
+			}
+		}
+		return nil
+	}
+	return newAssertion(fn, fmtMultiDescr("None", aa...), 0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
