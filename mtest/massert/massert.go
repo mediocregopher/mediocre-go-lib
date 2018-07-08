@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"testing"
 	"text/tabwriter"
 )
 
@@ -26,21 +27,29 @@ func fmtBlock(str string) string {
 	return "\n\t" + strings.Replace(str, "\n", "\n\t", -1) + "\n"
 }
 
-func fmtMultiDescr(prefix string, aa ...Assertion) string {
-	if len(aa) == 0 {
+func fmtMultiBlock(prefix string, elems ...string) string {
+	if len(elems) == 0 {
 		return prefix + "()"
-	} else if len(aa) == 1 {
-		return prefix + "(" + fmtBlock(aa[0].Description()) + ")"
+	} else if len(elems) == 1 {
+		return prefix + "(" + fmtBlock(elems[0]) + ")"
 	}
 
 	buf := new(bytes.Buffer)
 	fmt.Fprintf(buf, "%s(\n", prefix)
-	for _, a := range aa {
-		descrStr := "\t" + strings.Replace(a.Description(), "\n", "\n\t", -1)
-		fmt.Fprintf(buf, "%s,\n", descrStr)
+	for _, el := range elems {
+		elStr := "\t" + strings.Replace(el, "\n", "\n\t", -1)
+		fmt.Fprintf(buf, "%s,\n", elStr)
 	}
 	fmt.Fprintf(buf, ")")
 	return buf.String()
+}
+
+func fmtMultiDescr(prefix string, aa ...Assertion) string {
+	descrs := make([]string, len(aa))
+	for i := range aa {
+		descrs[i] = aa[i].Description()
+	}
+	return fmtMultiBlock(prefix, descrs...)
 }
 
 func fmtStack(frames []runtime.Frame) string {
@@ -132,6 +141,24 @@ func (a *assertion) Description() string {
 
 func (a *assertion) Stack() []runtime.Frame {
 	return a.stack
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Fatal is a convenience function which performs the Assertion and calls Fatal
+// on the testing.T instance if the assertion fails.
+func Fatal(t *testing.T, a Assertion) {
+	if err := a.Assert(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Error is a convenience function which performs the Assertion and calls Error
+// on the testing.T instance if the assertion fails.
+func Error(t *testing.T, a Assertion) {
+	if err := a.Assert(); err != nil {
+		t.Error(err)
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,48 +283,95 @@ func None(aa ...Assertion) Assertion {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-var typeOfInt64 = reflect.TypeOf(int64(0))
-
 func toStr(i interface{}) string {
 	return fmt.Sprintf("%T(%#v)", i, i)
 }
 
-// Equal asserts that the two values given are equal. The equality checking
-// done is to some degree fuzzy in the following ways:
-//
-// * All pointers are dereferenced.
-// * All ints and uints are converted to int64.
-//
+// Equal asserts that the two values are exactly equal, and uses the
+// reflect.DeepEqual function to determine if they are.
 func Equal(a, b interface{}) Assertion {
-	normalize := func(v reflect.Value) reflect.Value {
-		v = reflect.Indirect(v)
-		switch v.Kind() {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
-			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			v = v.Convert(typeOfInt64)
-		}
-		return v
-	}
-
-	fn := func() error {
-		aV, bV := reflect.ValueOf(a), reflect.ValueOf(b)
-		aV, bV = normalize(aV), normalize(bV)
-		if !reflect.DeepEqual(aV.Interface(), bV.Interface()) {
-			return errors.New("not equal")
-		}
-		return nil
-	}
-
-	return newAssertion(fn, toStr(a)+" == "+toStr(b), 0)
-}
-
-// Exactly asserts that the two values are exactly equal, and uses the
-// reflect.DeepEquals function to determine if they are.
-func Exactly(a, b interface{}) Assertion {
 	return newAssertion(func() error {
 		if !reflect.DeepEqual(a, b) {
 			return errors.New("not exactly equal")
 		}
 		return nil
-	}, toStr(a)+" === "+toStr(b), 0)
+	}, toStr(a)+" == "+toStr(b), 0)
+}
+
+func toSet(i interface{}, keyedMap bool) ([]interface{}, error) {
+	v := reflect.ValueOf(i)
+	switch v.Kind() {
+	case reflect.Array, reflect.Slice:
+		vv := make([]interface{}, v.Len())
+		for i := range vv {
+			vv[i] = v.Index(i).Interface()
+		}
+		return vv, nil
+	case reflect.Map:
+		keys := v.MapKeys()
+		vv := make([]interface{}, len(keys))
+		for i := range keys {
+			if keyedMap {
+				vv[i] = struct{ k, v interface{} }{
+					k: keys[i].Interface(),
+					v: v.MapIndex(keys[i]).Interface(),
+				}
+			} else {
+				vv[i] = v.MapIndex(keys[i]).Interface()
+			}
+		}
+		return vv, nil
+	default:
+		return nil, fmt.Errorf("cannot turn value of type %s into a set", v.Type())
+	}
+}
+
+// Subset asserts that the given subset is a subset of the given set. Both must
+// be of the same type and may be arrays, slices, or maps.
+func Subset(set, subset interface{}) Assertion {
+	return newAssertion(func() error {
+		if reflect.TypeOf(set) != reflect.TypeOf(subset) {
+			return errors.New("set and subset aren't of same type")
+		}
+
+		setVV, err := toSet(set, true)
+		if err != nil {
+			return err
+		}
+		subsetVV, err := toSet(subset, true)
+		if err != nil {
+			return err
+		}
+
+		// this is obviously not the most efficient way to do this
+	outer:
+		for i := range subsetVV {
+			for j := range setVV {
+				if reflect.DeepEqual(setVV[j], subsetVV[i]) {
+					continue outer
+				}
+			}
+			return fmt.Errorf("missing element %s", toStr(subsetVV[i]))
+		}
+		return nil
+	}, toStr(set)+" has subset "+toStr(subset), 0)
+}
+
+// Has asserts that the given set has the given element as a value in it. The
+// set may be an array, a slice, or a map, and if it's a map then the elem will
+// need to be a value in it.
+func Has(set, elem interface{}) Assertion {
+	return newAssertion(func() error {
+		setVV, err := toSet(set, false)
+		if err != nil {
+			return err
+		}
+
+		for i := range setVV {
+			if reflect.DeepEqual(setVV[i], elem) {
+				return nil
+			}
+		}
+		return errors.New("value not in set")
+	}, toStr(set)+" has value "+toStr(elem), 0)
 }

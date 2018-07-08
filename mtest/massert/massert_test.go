@@ -95,41 +95,65 @@ func TestNone(t *T) {
 	}
 }
 
-// TODO pointers, structs, slices, maps, nils
 func TestEqual(t *T) {
-	if err := All(
+	Fatal(t, All(
 		Equal(1, 1),
+		Equal("foo", "foo"),
+	))
+
+	Fatal(t, None(
+		Equal(1, 2),
 		Equal(1, int64(1)),
 		Equal(1, uint64(1)),
-		Equal("foo", "foo"),
-	).Assert(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := None(
-		Equal(1, 2),
-		Equal(1, int64(2)),
-		Equal(1, uint64(2)),
 		Equal("foo", "bar"),
-	).Assert(); err != nil {
-		t.Fatal(err)
-	}
+	))
 }
 
-func TestExactly(t *T) {
-	if err := All(
-		Exactly(1, 1),
-		Exactly("foo", "foo"),
-	).Assert(); err != nil {
-		t.Fatal(err)
-	}
+func TestSubset(t *T) {
+	Fatal(t, All(
+		Subset([]int{1, 2, 3}, []int{}),
+		Subset([]int{1, 2, 3}, []int{1}),
+		Subset([]int{1, 2, 3}, []int{2}),
+		Subset([]int{1, 2, 3}, []int{1, 2}),
+		Subset([]int{1, 2, 3}, []int{2, 1}),
+		Subset([]int{1, 2, 3}, []int{1, 2, 3}),
+		Subset([]int{1, 2, 3}, []int{1, 3, 2}),
 
-	if err := None(
-		Exactly(1, 2),
-		Exactly(1, int64(1)),
-		Exactly(1, uint64(1)),
-		Exactly("foo", "bar"),
-	).Assert(); err != nil {
-		t.Fatal(err)
-	}
+		Subset(map[int]int{1: 1, 2: 2}, map[int]int{}),
+		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 1}),
+		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 1, 2: 2}),
+	))
+
+	Fatal(t, None(
+		Subset([]int64{1, 2, 3}, []int{1}),
+		Subset([]int{}, []int{1, 2, 3}),
+		Subset([]int{1, 2, 3}, []int{4}),
+		Subset([]int{1, 2, 3}, []int{1, 3, 2, 4}),
+
+		Subset(map[int]int{1: 1, 2: 2}, map[int]int64{1: 1}),
+		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 2}),
+		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 1, 3: 3}),
+	))
+}
+
+func TestHas(t *T) {
+	Fatal(t, All(
+		Has([]int{1}, 1),
+		Has([]int{1, 2}, 1),
+		Has([]int{2, 1}, 1),
+		Has(map[int]int{1: 1}, 1),
+		Has(map[int]int{1: 2}, 2),
+		Has(map[int]int{1: 2, 2: 1}, 1),
+		Has(map[int]int{1: 2, 2: 2}, 2),
+	))
+
+	Fatal(t, None(
+		Has([]int{}, 1),
+		Has([]int{1}, 2),
+		Has([]int{2, 1}, 3),
+		Has(map[int]int{}, 1),
+		Has(map[int]int{1: 1}, 2),
+		Has(map[int]int{1: 2}, 1),
+		Has(map[int]int{1: 2, 2: 1}, 3),
+	))
 }
