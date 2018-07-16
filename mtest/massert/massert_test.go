@@ -172,3 +172,27 @@ func TestHasKey(t *T) {
 		HasKey(map[int]int{2: 2}, 1),
 	))
 }
+
+func TestLen(t *T) {
+	Fatal(t, All(
+		Len([]int(nil), 0),
+		Len([]int{}, 0),
+		Len([]int{1}, 1),
+		Len([]int{1, 2}, 2),
+		Len(map[int]int(nil), 0),
+		Len(map[int]int{}, 0),
+		Len(map[int]int{1: 1}, 1),
+		Len(map[int]int{1: 1, 2: 2}, 2),
+	))
+
+	Fatal(t, None(
+		Len([]int(nil), 1),
+		Len([]int{}, 1),
+		Len([]int{1}, 0),
+		Len([]int{1}, 2),
+		Len([]int{1, 2}, 1),
+		Len([]int{1, 2}, 3),
+		Len(map[int]int(nil), 1),
+		Len(map[int]int{}, 1),
+	))
+}

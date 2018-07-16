@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"text/tabwriter"
@@ -392,4 +393,19 @@ func HasKey(set, elem interface{}) Assertion {
 		}
 		return errors.New("value not a key in the map")
 	}, toStr(set)+" has key "+toStr(elem), 0)
+}
+
+// Len asserts that the given set has the given number of elements in it. The
+// set may be an array, a slice, or a map. A nil value'd set is considered to be
+// a length of zero.
+func Len(set interface{}, length int) Assertion {
+	return newAssertion(func() error {
+		setVV, err := toSet(set, false)
+		if err != nil {
+			return err
+		} else if len(setVV) != length {
+			return errors.New("set not correct length")
+		}
+		return nil
+	}, toStr(set)+" has length "+strconv.Itoa(length), 0)
 }
