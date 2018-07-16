@@ -157,3 +157,18 @@ func TestHas(t *T) {
 		Has(map[int]int{1: 2, 2: 1}, 3),
 	))
 }
+
+func TestHasKey(t *T) {
+	Fatal(t, All(
+		HasKey(map[int]int{1: 1}, 1),
+		HasKey(map[int]int{1: 1, 2: 2}, 1),
+		HasKey(map[int]int{1: 1, 2: 2}, 2),
+	))
+
+	Fatal(t, None(
+		HasKey([]int{}, 1),
+		HasKey([]int{1}, 1),
+		HasKey(map[int]int{}, 1),
+		HasKey(map[int]int{2: 2}, 1),
+	))
+}

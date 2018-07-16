@@ -375,3 +375,21 @@ func Has(set, elem interface{}) Assertion {
 		return errors.New("value not in set")
 	}, toStr(set)+" has value "+toStr(elem), 0)
 }
+
+// HasKey asserts that the given set (which must be a map type) has the given
+// element as a key in it.
+func HasKey(set, elem interface{}) Assertion {
+	return newAssertion(func() error {
+		v := reflect.ValueOf(set)
+		if v.Kind() != reflect.Map {
+			return fmt.Errorf("type %s is not a map", v.Type())
+		}
+
+		for _, key := range v.MapKeys() {
+			if reflect.DeepEqual(key.Interface(), elem) {
+				return nil
+			}
+		}
+		return errors.New("value not a key in the map")
+	}, toStr(set)+" has key "+toStr(elem), 0)
+}
