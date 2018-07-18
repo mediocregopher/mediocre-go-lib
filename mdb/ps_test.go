@@ -14,8 +14,9 @@ import (
 var testPS *PubSub
 
 func init() {
+	DefaultGCEProject = "test"
 	cfg := mcfg.New()
-	testPS = CfgPubSub(cfg, "test")
+	testPS = CfgPubSub(cfg)
 	cfg.StartTestRun()
 }
 
