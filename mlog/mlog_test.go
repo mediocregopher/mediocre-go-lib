@@ -9,6 +9,7 @@ import (
 	. "testing"
 	"time"
 
+	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -141,4 +142,15 @@ func TestMerge(t *T) {
 		KV{"a": "b"},
 		KV{"a": "a"}, KV{"a": "b"},
 	)
+}
+
+func TestPrefix(t *T) {
+	kv := KV{"foo": "bar"}
+	prefixKV := Prefix(kv, "aa")
+
+	massert.Fatal(t, massert.All(
+		massert.Equal(kv.KV(), KV{"foo": "bar"}),
+		massert.Equal(prefixKV.KV(), KV{"aafoo": "bar"}),
+		massert.Equal(kv.KV(), KV{"foo": "bar"}),
+	))
 }

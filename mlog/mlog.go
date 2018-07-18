@@ -104,6 +104,14 @@ type KVer interface {
 	KV() KV
 }
 
+// KVerFunc is a function which implements the KVer interface by calling itself.
+type KVerFunc func() KV
+
+// KV implements the KVer interface by calling the KVerFunc itself.
+func (kvf KVerFunc) KV() KV {
+	return kvf()
+}
+
 // KV is a set of key/value pairs which provides context for a log entry by a
 // KVer. KV is itself also a KVer.
 type KV map[string]interface{}
@@ -168,6 +176,19 @@ func Merge(kvs ...KVer) KVer {
 // MergeInto is a convenience function which acts similarly to Merge.
 func MergeInto(kv KVer, kvs ...KVer) KVer {
 	return mergeInto(kv, kvs...)
+}
+
+// Prefix prefixes the all keys returned from the given KVer with the given
+// prefix string.
+func Prefix(kv KVer, prefix string) KVer {
+	return KVerFunc(func() KV {
+		kvv := kv.KV()
+		newKVV := make(KV, len(kvv))
+		for k, v := range kvv {
+			newKVV[prefix+k] = v
+		}
+		return newKVV
+	})
 }
 
 // Message describes a message to be logged, after having already resolved the
