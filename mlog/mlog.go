@@ -167,8 +167,12 @@ func merge(kvs ...KVer) KV {
 }
 
 // Merge takes in multiple KVers and returns a single KVer which is the union of
-// all the passed in ones. Key/vals on the rightmost of the set take precedence
+// all the passed in ones. Key/Vals on the rightmost of the set take precedence
 // over conflicting ones to the left.
+//
+// TODO currently this evaluates all of the KVers and generates a flat KV
+// instance in the moment. It would be better if this actually called the KV
+// methods of each KVer on every outer KV call.
 func Merge(kvs ...KVer) KVer {
 	return merge(kvs...)
 }
