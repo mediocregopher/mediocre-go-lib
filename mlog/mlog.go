@@ -133,10 +133,6 @@ func (kv KV) Set(k string, v interface{}) KV {
 	return nkv
 }
 
-// separate from MergeInto because it's convenient to not return a KVer if that
-// KVer is going to immediately have KV called on it (and thereby create a copy
-// for no reason).
-//
 // this may take in any amount of nil values, but should never return nil
 func mergeInto(kv KVer, kvs ...KVer) KV {
 	if kv == nil {
@@ -154,32 +150,31 @@ func mergeInto(kv KVer, kvs ...KVer) KV {
 	return kvm
 }
 
-// separate from Merge because it's convenient to not return a KVer if that KVer
-// is going to immediately have KV called on it (and thereby create a copy for
-// no reason).
-//
-// this may take in any amount of nil values, but should never return nil
-func merge(kvs ...KVer) KV {
-	if len(kvs) == 0 {
-		return KV{}
-	}
-	return mergeInto(kvs[0], kvs[1:]...)
+type merger struct {
+	base KVer
+	rest []KVer
 }
 
 // Merge takes in multiple KVers and returns a single KVer which is the union of
 // all the passed in ones. Key/Vals on the rightmost of the set take precedence
 // over conflicting ones to the left.
 //
-// TODO currently this evaluates all of the KVers and generates a flat KV
-// instance in the moment. It would be better if this actually called the KV
-// methods of each KVer on every outer KV call.
+// The KVer returned will call KV() on each of the passed in KVers every time
+// its KV method is called.
 func Merge(kvs ...KVer) KVer {
-	return merge(kvs...)
+	if len(kvs) == 0 {
+		return merger{}
+	}
+	return merger{base: kvs[0], rest: kvs[1:]}
 }
 
 // MergeInto is a convenience function which acts similarly to Merge.
 func MergeInto(kv KVer, kvs ...KVer) KVer {
-	return mergeInto(kv, kvs...)
+	return merger{base: kv, rest: kvs}
+}
+
+func (m merger) KV() KV {
+	return mergeInto(m.base, m.rest...)
 }
 
 // Prefix prefixes the all keys returned from the given KVer with the given
@@ -252,7 +247,7 @@ type Logger struct {
 	wc       io.WriteCloser
 	wfn      WriteFn
 	maxLevel uint
-	kv       KV
+	kv       KVer
 
 	msgBufPool       *sync.Pool
 	msgCh            chan msg
@@ -328,7 +323,7 @@ func (l *Logger) WithWriteFn(wfn WriteFn) *Logger {
 // log messages.
 func (l *Logger) WithKV(kvs ...KVer) *Logger {
 	l = l.cp()
-	l.kv = mergeInto(l.kv, kvs...)
+	l.kv = MergeInto(l.kv, kvs...)
 	return l
 }
 

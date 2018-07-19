@@ -142,8 +142,7 @@ func TestDefaultWriteFn(t *T) {
 
 func TestMerge(t *T) {
 	assertMerge := func(exp KV, kvs ...KVer) massert.Assertion {
-		got := merge(kvs...)
-		return massert.Equal(exp, got)
+		return massert.Equal(exp, Merge(kvs...).KV())
 	}
 
 	massert.Fatal(t, massert.All(
@@ -168,6 +167,19 @@ func TestMerge(t *T) {
 			KV{"a": "a"}, KV{"a": "b"},
 		),
 	))
+
+	// Merge should _not_ call KV() on the inner KVers until the outer one is
+	// called.
+	{
+		kv := KV{"a": "a"}
+		mergedKV := Merge(kv)
+		kv["a"] = "b"
+		massert.Fatal(t, massert.All(
+			massert.Equal(KV{"a": "b"}, kv),
+			massert.Equal(KV{"a": "b"}, kv.KV()),
+			massert.Equal(KV{"a": "b"}, mergedKV.KV()),
+		))
+	}
 }
 
 func TestPrefix(t *T) {

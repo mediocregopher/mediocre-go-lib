@@ -23,7 +23,7 @@ func ErrWithKV(err error, kvs ...KVer) merry.Error {
 	if exKV := merry.Value(merr, kvKey(0)); exKV != nil {
 		kv = mergeInto(exKV.(KV), kvs...)
 	} else {
-		kv = merge(kvs...)
+		kv = Merge(kvs...).KV()
 	}
 	return merr.WithValue(kvKey(0), kv)
 }
@@ -57,7 +57,7 @@ func CtxWithKV(ctx context.Context, kvs ...KVer) context.Context {
 	if existingKV != nil {
 		kv = mergeInto(existingKV.(KV), kvs...)
 	} else {
-		kv = merge(kvs...)
+		kv = Merge(kvs...).KV()
 	}
 	return context.WithValue(ctx, kvKey(0), kv)
 }
