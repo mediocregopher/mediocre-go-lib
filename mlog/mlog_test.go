@@ -10,35 +10,44 @@ import (
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestTruncate(t *T) {
-	assert.Equal(t, "abc", Truncate("abc", 4))
-	assert.Equal(t, "abc", Truncate("abc", 3))
-	assert.Equal(t, "ab...", Truncate("abc", 2))
+	massert.Fatal(t, massert.All(
+		massert.Equal("abc", Truncate("abc", 4)),
+		massert.Equal("abc", Truncate("abc", 3)),
+		massert.Equal("ab...", Truncate("abc", 2)),
+	))
 }
 
 func TestKV(t *T) {
 	var kv KV
-	assert.NotNil(t, kv.KV())
-	assert.Empty(t, kv.KV())
+	massert.Fatal(t, massert.All(
+		massert.Not(massert.Nil(kv.KV())),
+		massert.Len(kv.KV(), 0),
+	))
 
+	// test that the KV method returns a new KV instance
 	kv = KV{"foo": "a"}
-	kv2 := KV(kv.KV())
-	kv["bar"] = "b"
+	kv2 := kv.KV()
+	kv["bur"] = "b"
 	kv2["bar"] = "bb"
-	assert.Equal(t, KV{"foo": "a", "bar": "b"}, kv)
-	assert.Equal(t, KV{"foo": "a", "bar": "bb"}, kv2)
+	massert.Fatal(t, massert.All(
+		massert.Equal(KV{"foo": "a", "bur": "b"}, kv),
+		massert.Equal(KV{"foo": "a", "bar": "bb"}, kv2),
+	))
 
+	// test that the Set method returns a new KV instance
 	kv = KV{"foo": "a"}
 	kv2 = kv.Set("bar", "wat")
-	assert.Equal(t, KV{"foo": "a"}, kv)
-	assert.Equal(t, KV{"foo": "a", "bar": "wat"}, kv2)
+	kv["bur"] = "ok"
+	massert.Fatal(t, massert.All(
+		massert.Equal(KV{"foo": "a", "bur": "ok"}, kv),
+		massert.Equal(KV{"foo": "a", "bar": "wat"}, kv2),
+	))
 }
 
-func TestLLog(t *T) {
+func TestLogger(t *T) {
 	buf := new(bytes.Buffer)
 	l := NewLogger(struct {
 		io.Writer
@@ -49,15 +58,17 @@ func TestLLog(t *T) {
 	})
 	l.testMsgWrittenCh = make(chan struct{}, 10)
 
-	assertOut := func(expected string) {
+	assertOut := func(expected string) massert.Assertion {
 		select {
 		case <-l.testMsgWrittenCh:
 		case <-time.After(1 * time.Second):
 			t.Fatal("waited too long for msg to write")
 		}
 		out, err := buf.ReadString('\n')
-		require.NoError(t, err)
-		assert.Equal(t, expected, out)
+		return massert.All(
+			massert.Nil(err),
+			massert.Equal(expected, out),
+		)
 	}
 
 	// Default max level should be INFO
@@ -65,9 +76,11 @@ func TestLLog(t *T) {
 	l.Log(InfoLevel, "bar")
 	l.Log(WarnLevel, "baz")
 	l.Log(ErrorLevel, "buz")
-	assertOut("~ INFO -- bar\n")
-	assertOut("~ WARN -- baz\n")
-	assertOut("~ ERROR -- buz\n")
+	massert.Fatal(t, massert.All(
+		assertOut("~ INFO -- bar\n"),
+		assertOut("~ WARN -- baz\n"),
+		assertOut("~ ERROR -- buz\n"),
+	))
 
 	{
 		l := l.WithMaxLevel(WarnLevel)
@@ -75,8 +88,10 @@ func TestLLog(t *T) {
 		l.Log(InfoLevel, "bar")
 		l.Log(WarnLevel, "baz")
 		l.Log(ErrorLevel, "buz", KV{"a": "b"})
-		assertOut("~ WARN -- baz\n")
-		assertOut("~ ERROR -- buz -- a=\"b\"\n")
+		massert.Fatal(t, massert.All(
+			assertOut("~ WARN -- baz\n"),
+			assertOut("~ ERROR -- buz -- a=\"b\"\n"),
+		))
 	}
 
 	{
@@ -87,61 +102,72 @@ func TestLLog(t *T) {
 		l2.Log(InfoLevel, "bar")
 		l2.Log(WarnLevel, "baz")
 		l.Log(ErrorLevel, "buz")
-		assertOut("~ INFO -- BAR\n")
-		assertOut("~ WARN -- BAZ\n")
-		assertOut("~ ERROR -- buz\n")
+		massert.Fatal(t, massert.All(
+			assertOut("~ INFO -- BAR\n"),
+			assertOut("~ WARN -- BAZ\n"),
+			assertOut("~ ERROR -- buz\n"),
+		))
 	}
 }
 
 func TestDefaultWriteFn(t *T) {
-	assertFormat := func(postfix string, msg Message) {
+	assertFormat := func(postfix string, msg Message) massert.Assertion {
 		expectedRegex := regexp.MustCompile(`^~ ` + postfix + `\n$`)
 		buf := bytes.NewBuffer(make([]byte, 0, 128))
-		assert.NoError(t, DefaultWriteFn(buf, msg))
+		writeErr := DefaultWriteFn(buf, msg)
 		line, err := buf.ReadString('\n')
-		require.NoError(t, err)
-		assert.True(t, expectedRegex.MatchString(line), "regex: %q line: %q", expectedRegex.String(), line)
+		return massert.Comment(
+			massert.All(
+				massert.Nil(writeErr),
+				massert.Nil(err),
+				massert.Equal(true, expectedRegex.MatchString(line)),
+			),
+			"line:%q", line,
+		)
 	}
 
 	msg := Message{Level: InfoLevel, Msg: "this is a test"}
-	assertFormat("INFO -- this is a test", msg)
+	massert.Fatal(t, assertFormat("INFO -- this is a test", msg))
 
 	msg.KV = KV{}.KV()
-	assertFormat("INFO -- this is a test", msg)
+	massert.Fatal(t, assertFormat("INFO -- this is a test", msg))
 
 	msg.KV = KV{"foo": "a"}.KV()
-	assertFormat("INFO -- this is a test -- foo=\"a\"", msg)
+	massert.Fatal(t, assertFormat("INFO -- this is a test -- foo=\"a\"", msg))
 
 	msg.KV = KV{"foo": "a", "bar": "b"}.KV()
-	assertFormat("INFO -- this is a test -- bar=\"b\" foo=\"a\"", msg)
+	massert.Fatal(t,
+		assertFormat("INFO -- this is a test -- bar=\"b\" foo=\"a\"", msg))
 }
 
 func TestMerge(t *T) {
-	assertMerge := func(exp KV, kvs ...KVer) {
+	assertMerge := func(exp KV, kvs ...KVer) massert.Assertion {
 		got := merge(kvs...)
-		assert.Equal(t, exp, got)
+		return massert.Equal(exp, got)
 	}
 
-	assertMerge(KV{})
-	assertMerge(KV{}, nil)
-	assertMerge(KV{}, nil, nil)
+	massert.Fatal(t, massert.All(
+		assertMerge(KV{}),
+		assertMerge(KV{}, nil),
+		assertMerge(KV{}, nil, nil),
 
-	assertMerge(KV{"a": "a"}, KV{"a": "a"})
-	assertMerge(KV{"a": "a"}, nil, KV{"a": "a"})
-	assertMerge(KV{"a": "a"}, KV{"a": "a"}, nil)
+		assertMerge(KV{"a": "a"}, KV{"a": "a"}),
+		assertMerge(KV{"a": "a"}, nil, KV{"a": "a"}),
+		assertMerge(KV{"a": "a"}, KV{"a": "a"}, nil),
 
-	assertMerge(
-		KV{"a": "a", "b": "b"},
-		KV{"a": "a"}, KV{"b": "b"},
-	)
-	assertMerge(
-		KV{"a": "a", "b": "b"},
-		KV{"a": "a"}, KV{"b": "b"},
-	)
-	assertMerge(
-		KV{"a": "b"},
-		KV{"a": "a"}, KV{"a": "b"},
-	)
+		assertMerge(
+			KV{"a": "a", "b": "b"},
+			KV{"a": "a"}, KV{"b": "b"},
+		),
+		assertMerge(
+			KV{"a": "a", "b": "b"},
+			KV{"a": "a"}, KV{"b": "b"},
+		),
+		assertMerge(
+			KV{"a": "b"},
+			KV{"a": "a"}, KV{"a": "b"},
+		),
+	))
 }
 
 func TestPrefix(t *T) {
