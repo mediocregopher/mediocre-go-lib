@@ -1,3 +1,5 @@
+// Package mbigquery implements connecting to Google's BigQuery service and
+// simplifying a number of interactions with it.
 package mbigquery
 
 import (

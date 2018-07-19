@@ -1,3 +1,5 @@
+// Package mpubsub implements connecting to Google's PubSub service and
+// simplifying a number of interactions with it.
 package mpubsub
 
 import (
