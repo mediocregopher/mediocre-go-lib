@@ -299,6 +299,27 @@ func Equal(a, b interface{}) Assertion {
 	}, toStr(a)+" == "+toStr(b), 0)
 }
 
+// Nil asserts that the value is nil. This assertion works both if the value is
+// the untyped nil value (e.g. `Nil(nil)`) or if it's a typed nil value (e.g.
+// `Nil([]byte(nil))`).
+func Nil(i interface{}) Assertion {
+	return newAssertion(func() error {
+		if i == nil {
+			return nil
+		}
+		v := reflect.ValueOf(i)
+		switch v.Kind() {
+		case reflect.Chan, reflect.Func, reflect.Interface,
+			reflect.Map, reflect.Ptr, reflect.Slice:
+			if v.IsNil() {
+				return nil
+			}
+		default:
+		}
+		return errors.New("not nil")
+	}, toStr(i)+" is nil", 0)
+}
+
 func toSet(i interface{}, keyedMap bool) ([]interface{}, error) {
 	v := reflect.ValueOf(i)
 	switch v.Kind() {
@@ -409,3 +430,7 @@ func Len(set interface{}, length int) Assertion {
 		return nil
 	}, toStr(set)+" has length "+strconv.Itoa(length), 0)
 }
+
+// TODO ChanRead(ch interface{}, within time.Duration, callback func(interface{}) error)
+// TODO ChanBlock(ch interface{}, for time.Duration)
+// TODO ChanClosed(ch interface{})

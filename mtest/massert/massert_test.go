@@ -109,6 +109,26 @@ func TestEqual(t *T) {
 	))
 }
 
+func TestNil(t *T) {
+	Fatal(t, All(
+		Nil(nil),
+		Nil([]byte(nil)),
+		Nil(map[int]int(nil)),
+		Nil((*struct{})(nil)),
+		Nil(interface{}(nil)),
+		Nil(error(nil)),
+	))
+
+	Fatal(t, None(
+		Nil(1),
+		Nil([]byte("foo")),
+		Nil(map[int]int{1: 1}),
+		Nil(&struct{}{}),
+		Nil(interface{}("hi")),
+		Nil(errors.New("some error")),
+	))
+}
+
 func TestSubset(t *T) {
 	Fatal(t, All(
 		Subset([]int{1, 2, 3}, []int{}),
