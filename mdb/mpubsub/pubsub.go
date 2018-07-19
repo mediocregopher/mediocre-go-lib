@@ -37,8 +37,8 @@ type PubSub struct {
 	log *mlog.Logger
 }
 
-// Cfg configures and returns a PubSub instance which will be usable once Run is
-// called on the passed in Cfg instance
+// Cfg configures and returns a PubSub instance which will be usable once
+// StartRun is called on the passed in Cfg instance.
 func Cfg(cfg *mcfg.Cfg) *PubSub {
 	cfg = cfg.Child("pubsub")
 	var ps PubSub
