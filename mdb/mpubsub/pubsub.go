@@ -1,4 +1,4 @@
-package mdb
+package mpubsub
 
 import (
 	"context"
@@ -9,13 +9,14 @@ import (
 	"cloud.google.com/go/pubsub"
 	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mdb"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	oldctx "golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func psIsErrAlreadyExists(err error) bool {
+func isErrAlreadyExists(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -30,18 +31,18 @@ type Message = pubsub.Message
 type PubSub struct {
 	*pubsub.Client
 
-	gce *GCE
+	gce *mdb.GCE
 	log *mlog.Logger
 }
 
-// CfgPubSub configures and returns a PubSub instance which will be usable once
-// Run is called on the passed in Cfg instance
-func CfgPubSub(cfg *mcfg.Cfg) *PubSub {
+// Cfg configures and returns a PubSub instance which will be usable once Run is
+// called on the passed in Cfg instance
+func Cfg(cfg *mcfg.Cfg) *PubSub {
 	cfg = cfg.Child("pubsub")
 	var ps PubSub
-	ps.gce = CfgGCE(cfg)
+	ps.gce = mdb.CfgGCE(cfg)
+	ps.log = m.Log(cfg, &ps)
 	cfg.Start.Then(func(ctx context.Context) error {
-		ps.log = m.Log(cfg, ps.KV())
 		ps.log.Info("connecting to pubsub")
 		var err error
 		ps.Client, err = pubsub.NewClient(ctx, ps.gce.Project, ps.gce.ClientOptions()...)
@@ -72,7 +73,7 @@ func (ps *PubSub) Topic(ctx context.Context, name string, create bool) (*Topic, 
 	var err error
 	if create {
 		t, err = ps.Client.CreateTopic(ctx, name)
-		if psIsErrAlreadyExists(err) {
+		if isErrAlreadyExists(err) {
 			t = ps.Client.Topic(name)
 		} else if err != nil {
 			return nil, mlog.ErrWithKV(err, kv)
@@ -130,7 +131,7 @@ func (t *Topic) Subscription(ctx context.Context, name string, create bool) (*Su
 		s, err = t.ps.CreateSubscription(ctx, name, pubsub.SubscriptionConfig{
 			Topic: t.topic,
 		})
-		if psIsErrAlreadyExists(err) {
+		if isErrAlreadyExists(err) {
 			s = t.ps.Subscription(name)
 		} else if err != nil {
 			return nil, mlog.ErrWithKV(err, kv)

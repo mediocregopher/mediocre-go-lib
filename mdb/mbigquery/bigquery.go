@@ -1,4 +1,4 @@
-package mdb
+package mbigquery
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mdb"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 
 	"cloud.google.com/go/bigquery"
@@ -16,7 +17,7 @@ import (
 
 // TODO this file needs tests
 
-func bqIsErrAlreadyExists(err error) bool {
+func isErrAlreadyExists(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -29,7 +30,7 @@ func bqIsErrAlreadyExists(err error) bool {
 // BigQuery is a wrapper around a bigquery client providing more functionality.
 type BigQuery struct {
 	*bigquery.Client
-	gce *GCE
+	gce *mdb.GCE
 	log *mlog.Logger
 
 	// key is dataset/tableName
@@ -38,12 +39,12 @@ type BigQuery struct {
 	tableUploaders map[[2]string]*bigquery.Uploader
 }
 
-// CfgBigQuery configures and returns a BigQuery instance which will be usable
-// once Run is called on the passed in Cfg instance.
-func CfgBigQuery(cfg *mcfg.Cfg) *BigQuery {
+// Cfg configures and returns a BigQuery instance which will be usable once Run
+// is called on the passed in Cfg instance.
+func Cfg(cfg *mcfg.Cfg) *BigQuery {
 	cfg = cfg.Child("bigquery")
 	bq := BigQuery{
-		gce:            CfgGCE(cfg),
+		gce:            mdb.CfgGCE(cfg),
 		tables:         map[[2]string]*bigquery.Table{},
 		tableUploaders: map[[2]string]*bigquery.Uploader{},
 	}
@@ -90,7 +91,7 @@ func (bq *BigQuery) Table(
 	}
 
 	ds := bq.Dataset(dataset)
-	if err := ds.Create(ctx, nil); err != nil && !bqIsErrAlreadyExists(err) {
+	if err := ds.Create(ctx, nil); err != nil && !isErrAlreadyExists(err) {
 		return nil, nil, mlog.ErrWithKV(err, bq, kv)
 	}
 
@@ -99,7 +100,7 @@ func (bq *BigQuery) Table(
 		Name:   tableName,
 		Schema: schema,
 	}
-	if err := table.Create(ctx, meta); err != nil && !bqIsErrAlreadyExists(err) {
+	if err := table.Create(ctx, meta); err != nil && !isErrAlreadyExists(err) {
 		return nil, nil, mlog.ErrWithKV(err, bq, kv)
 	}
 	uploader := table.Uploader()
@@ -111,23 +112,23 @@ func (bq *BigQuery) Table(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const bqTimeFormat = "2006-01-02 15:04:05 MST"
+const timeFormat = "2006-01-02 15:04:05 MST"
 
-// BigQueryTime wraps a time.Time object and provides marshaling/unmarshaling
-// for bigquery's time format.
-type BigQueryTime struct {
+// Time wraps a time.Time object and provides marshaling/unmarshaling for
+// bigquery's time format.
+type Time struct {
 	time.Time
 }
 
 // MarshalText implements the encoding.TextMarshaler interface.
-func (t BigQueryTime) MarshalText() ([]byte, error) {
-	str := t.Time.Format(bqTimeFormat)
+func (t Time) MarshalText() ([]byte, error) {
+	str := t.Time.Format(timeFormat)
 	return []byte(str), nil
 }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
-func (t *BigQueryTime) UnmarshalText(b []byte) error {
-	tt, err := time.Parse(bqTimeFormat, string(b))
+func (t *Time) UnmarshalText(b []byte) error {
+	tt, err := time.Parse(timeFormat, string(b))
 	if err != nil {
 		return err
 	}
@@ -136,7 +137,7 @@ func (t *BigQueryTime) UnmarshalText(b []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-func (t *BigQueryTime) MarshalJSON() ([]byte, error) {
+func (t *Time) MarshalJSON() ([]byte, error) {
 	b, err := t.MarshalText()
 	if err != nil {
 		return nil, err
@@ -145,7 +146,7 @@ func (t *BigQueryTime) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
-func (t *BigQueryTime) UnmarshalJSON(b []byte) error {
+func (t *Time) UnmarshalJSON(b []byte) error {
 	var str string
 	if err := json.Unmarshal(b, &str); err != nil {
 		return err

@@ -1,4 +1,4 @@
-package mdb
+package mpubsub
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mdb"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,9 +15,9 @@ import (
 var testPS *PubSub
 
 func init() {
-	DefaultGCEProject = "test"
+	mdb.DefaultGCEProject = "test"
 	cfg := mcfg.New()
-	testPS = CfgPubSub(cfg)
+	testPS = Cfg(cfg)
 	cfg.StartTestRun()
 }
 
