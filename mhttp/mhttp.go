@@ -4,11 +4,14 @@ package mhttp
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/mnet"
 )
 
 // CfgServer initializes and returns an *http.Server which will initialize on
@@ -35,4 +38,19 @@ func CfgServer(cfg *mcfg.Cfg, h http.Handler) *http.Server {
 
 	// TODO shutdown logic
 	return &srv
+}
+
+// AddXForwardedFor populates the X-Forwarded-For header on the Request to
+// convey that the request is being proxied for IP.
+//
+// If the IP is invalid, loopback, or otherwise part of a reserved range, this
+// does nothing.
+func AddXForwardedFor(r *http.Request, ipStr string) {
+	const xff = "X-Forwarded-For"
+	ip := net.ParseIP(ipStr)
+	if ip == nil || mnet.IsReservedIP(ip) { // IsReservedIP includes loopback
+		return
+	}
+	prev, _ := r.Header[xff]
+	r.Header.Set(xff, strings.Join(append(prev, ip.String()), ", "))
 }
