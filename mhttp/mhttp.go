@@ -6,6 +6,8 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 
 	"github.com/mediocregopher/mediocre-go-lib/m"
@@ -53,4 +55,28 @@ func AddXForwardedFor(r *http.Request, ipStr string) {
 	}
 	prev, _ := r.Header[xff]
 	r.Header.Set(xff, strings.Join(append(prev, ip.String()), ", "))
+}
+
+// ReverseProxy returns an httputil.ReverseProxy which will send requests to the
+// given URL and copy their responses back without modification.
+//
+// Only the Scheme and Host of the given URL are used.
+//
+// Any http.ResponseWriters passed into the ServeHTTP call of the returned
+// instance should not be modified afterwards.
+func ReverseProxy(u *url.URL) *httputil.ReverseProxy {
+	rp := new(httputil.ReverseProxy)
+	rp.Director = func(req *http.Request) {
+		if ipStr, _, err := net.SplitHostPort(req.RemoteAddr); err != nil {
+			AddXForwardedFor(req, ipStr)
+		}
+
+		req.URL.Scheme = u.Scheme
+		req.URL.Host = u.Host
+	}
+
+	// TODO when this package has a function for creating a Client use that for
+	// the default here
+
+	return rp
 }
