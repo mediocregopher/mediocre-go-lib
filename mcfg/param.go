@@ -113,3 +113,16 @@ func (c *Cfg) ParamDuration(name string, defaultVal mtime.Duration, usage string
 	c.ParamAdd(Param{Name: name, Usage: usage, IsString: true, Into: &d})
 	return &d
 }
+
+// ParamJSON reads the parameter value as a JSON value and unmarshals it into
+// the given interface{} (which should be a pointer). The receiver (into) is
+// also used to determine the default value.
+func (c *Cfg) ParamJSON(name string, into interface{}, usage string) {
+	c.ParamAdd(Param{Name: name, Usage: usage, Into: into})
+}
+
+// ParamRequiredJSON reads the parameter value as a JSON value and unmarshals it
+// into the given interface{} (which should be a pointer).
+func (c *Cfg) ParamRequiredJSON(name string, into interface{}, usage string) {
+	c.ParamAdd(Param{Name: name, Required: true, Usage: usage, Into: into})
+}

@@ -161,6 +161,14 @@ func (c *Cfg) populateParams(src Source) error {
 		Path []string `json:",omitempty"`
 		Name string
 	}
+	paramFullName := func(p param) string {
+		if len(p.Path) == 0 {
+			return p.Name
+		}
+		slice := append(make([]string, 0, len(p.Path)+1), p.Name)
+		slice = append(slice, p.Path...)
+		return strings.Join(slice, "-")
+	}
 
 	pvM := map[string]ParamValue{}
 	for _, pv := range pvs {
@@ -193,7 +201,7 @@ func (c *Cfg) populateParams(src Source) error {
 		if err != nil {
 			return err
 		} else if _, ok := pvM[string(keyB)]; !ok {
-			return fmt.Errorf("param %s is required but wasn't populated by any configuration source", keyB)
+			return fmt.Errorf("param %s is required but wasn't populated by any configuration source", paramFullName(reqP))
 		}
 	}
 
