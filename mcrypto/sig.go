@@ -170,8 +170,7 @@ func Verify(v Verifier, s Signature, r io.Reader) error {
 // VerifyBytes uses the Verifier to verify that the Signature is for the given
 // []bytes.
 //
-// Returns any errors from io.Reader, or ErrInvalidSig (use merry.Is(err,
-// mcrypto.ErrInvalidSig) to check).
+// Returns ErrInvalidSig (use merry.Is(err, mcrypto.ErrInvalidSig) to check).
 func VerifyBytes(v Verifier, s Signature, b []byte) error {
 	return v.verify(s, bytes.NewBuffer(b))
 }
@@ -179,8 +178,7 @@ func VerifyBytes(v Verifier, s Signature, b []byte) error {
 // VerifyString uses the Verifier to verify that the Signature is for the given
 // string.
 //
-// Returns any errors from io.Reader, or ErrInvalidSig (use merry.Is(err,
-// mcrypto.ErrInvalidSig) to check).
+// Returns ErrInvalidSig (use merry.Is(err, mcrypto.ErrInvalidSig) to check).
 func VerifyString(v Verifier, s Signature, in string) error {
 	return VerifyBytes(v, s, []byte(in))
 }
