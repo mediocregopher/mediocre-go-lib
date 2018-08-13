@@ -30,15 +30,17 @@ func TestCheckerRun(t *T) {
 				},
 			}
 		},
+		MaxLength: 4,
 	}
 
 	// 4 Actions should never be able to go over 5
-	if err := c.Run(4, time.Second); err != nil {
+	if err := c.RunUntil(time.Second); err != nil {
 		t.Fatal(err)
 	}
 
 	// 20 should always go over 5 eventually
-	err := c.Run(20, time.Second)
+	c.MaxLength = 20
+	err := c.RunUntil(time.Second)
 	if err == nil {
 		t.Fatal("expected error when maxDepth is 20")
 	} else if len(err.(CheckerErr).Applied) < 6 {

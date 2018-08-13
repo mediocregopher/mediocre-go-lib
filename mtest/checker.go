@@ -80,10 +80,21 @@ type Checker struct {
 	// State. This is called after Init and after every subsequent Action is
 	// applied.
 	Actions func(State) []Action
+
+	// MaxLength indicates the maximum number of Actions which can be strung
+	// together in a single Run. Defaults to 10 if not set.
+	MaxLength int
 }
 
-// Run performs RunOnce in a loop until maxDuration has elapsed.
-func (c Checker) Run(maxDepth int, maxDuration time.Duration) error {
+func (c Checker) withDefaults() Checker {
+	if c.MaxLength == 0 {
+		c.MaxLength = 10
+	}
+	return c
+}
+
+// RunUntil performs Runs in a loop until maxDuration has elapsed.
+func (c Checker) RunUntil(maxDuration time.Duration) error {
 	doneTimer := time.After(maxDuration)
 	for {
 		select {
@@ -92,18 +103,19 @@ func (c Checker) Run(maxDepth int, maxDuration time.Duration) error {
 		default:
 		}
 
-		if err := c.RunOnce(maxDepth); err != nil {
+		if err := c.Run(); err != nil {
 			return err
 		}
 	}
 }
 
-// RunOnce generates a single sequence of Actions and applies them in order,
-// returning nil once the number of Actions performed has reached maxDepth or a
+// Run generates a single sequence of Actions and applies them in order,
+// returning nil once the number of Actions performed has reached MaxLength or a
 // CheckErr if an error is returned.
-func (c Checker) RunOnce(maxDepth int) error {
+func (c Checker) Run() error {
+	c = c.withDefaults()
 	s := c.Init()
-	applied := make([]Applyer, 0, maxDepth)
+	applied := make([]Applyer, 0, c.MaxLength)
 	for {
 		actions := c.Actions(s)
 		action := mrand.Element(actions, func(i int) uint64 {
@@ -124,7 +136,7 @@ func (c Checker) RunOnce(maxDepth int) error {
 			}
 		} else if action.Incomplete {
 			continue
-		} else if action.Terminate || len(applied) >= maxDepth {
+		} else if action.Terminate || len(applied) >= c.MaxLength {
 			return nil
 		}
 	}
