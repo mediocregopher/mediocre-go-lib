@@ -62,6 +62,11 @@ type Action struct {
 	// be the last Action applied, even if that means the maxDepth of the Run is
 	// gone over.
 	Incomplete bool
+
+	// Terminate can be set to true to indicate that this Action should always
+	// be the last Action applied, even if that means the maxDepth hasn't been
+	// reached yet.
+	Terminate bool
 }
 
 // Checker implements a very basic property checker. It generates random test
@@ -119,7 +124,7 @@ func (c Checker) RunOnce(maxDepth int) error {
 			}
 		} else if action.Incomplete {
 			continue
-		} else if len(applied) >= maxDepth {
+		} else if action.Terminate || len(applied) >= maxDepth {
 			return nil
 		}
 	}
