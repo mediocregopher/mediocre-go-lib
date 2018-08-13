@@ -3,285 +3,18 @@ package mcfg
 import (
 	"bytes"
 	"encoding/json"
-	"strconv"
+	"fmt"
+	"log"
+	"strings"
 	. "testing"
+	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
+	"github.com/mediocregopher/mediocre-go-lib/mtest"
+	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// * dimension
-// - dimension value
-//
-// * Cfg path
-//   - New()
-//   - New.Child("a")
-//   - New.Child("a-b")
-//   - New.Child("a=b")
-// * Param name
-//   - normal
-//   - w/ "-"
-//   - w/ "=" ?
-// * Param type
-//   - bool
-//   - non-bool
-//     * non-bool type
-//       - int
-//       - string
-//         * Str value
-//           - empty
-//           - normal
-//           - w/ -
-//           - w/ =
-//     * Value format
-//       - w/ =
-//       - w/o =
-
-func combinate(slices ...[]string) [][]string {
-	out := [][]string{{}}
-	for _, slice := range slices {
-		if len(slice) == 0 {
-			continue
-		}
-		prev := out
-		out = make([][]string, 0, len(prev)*len(slice))
-		for _, prevSet := range prev {
-			for _, sliceElem := range slice {
-				prevSetCp := make([]string, len(prevSet), len(prevSet)+1)
-				copy(prevSetCp, prevSet)
-				prevSetCp = append(prevSetCp, sliceElem)
-				out = append(out, prevSetCp)
-			}
-		}
-	}
-	return out
-}
-
-func TestCombinate(t *T) {
-	type combTest struct {
-		args [][]string
-		exp  [][]string
-	}
-
-	tests := []combTest{
-		{
-			args: [][]string{},
-			exp:  [][]string{{}},
-		},
-		{
-			args: [][]string{{"a"}},
-			exp:  [][]string{{"a"}},
-		},
-		{
-			args: [][]string{{"a"}, {"b"}},
-			exp:  [][]string{{"a", "b"}},
-		},
-		{
-			args: [][]string{{"a", "aa"}, {"b"}},
-			exp: [][]string{
-				{"a", "b"},
-				{"aa", "b"},
-			},
-		},
-		{
-			args: [][]string{{"a"}, {"b", "bb"}},
-			exp: [][]string{
-				{"a", "b"},
-				{"a", "bb"},
-			},
-		},
-		{
-			args: [][]string{{"a", "aa"}, {"b", "bb"}},
-			exp: [][]string{
-				{"a", "b"},
-				{"aa", "b"},
-				{"a", "bb"},
-				{"aa", "bb"},
-			},
-		},
-	}
-
-	for i, test := range tests {
-		msgAndArgs := []interface{}{"test:%d args:%v", i, test.args}
-		got := combinate(test.args...)
-		assert.Len(t, got, len(test.exp), msgAndArgs...)
-		for _, expHas := range test.exp {
-			assert.Contains(t, got, expHas, msgAndArgs...)
-		}
-	}
-}
-
-func TestSourceCLI(t *T) {
-	var (
-		paths = []string{
-			"root",
-			"child",
-			"childDash",
-			"childEq",
-		}
-
-		paramNames = []string{
-			"normal",
-			"wDash",
-			"wEq",
-		}
-
-		isBool = []string{
-			"isBool",
-			"isNotBool",
-		}
-
-		nonBoolTypes = []string{
-			"int",
-			"str",
-		}
-
-		nonBoolFmts = []string{
-			"wEq",
-			"woEq",
-		}
-
-		nonBoolStrValues = []string{
-			"empty",
-			"normal",
-			"wDash",
-			"wEq",
-		}
-	)
-
-	type cliTest struct {
-		path            string
-		name            string
-		isBool          bool
-		nonBoolType     string
-		nonBoolStrValue string
-		nonBoolFmt      string
-
-		// it's kinda hacky to make this a pointer, but it makes the code a lot
-		// easier to read later
-		exp *ParamValue
-	}
-
-	var tests []cliTest
-	for _, comb := range combinate(paths, paramNames, isBool) {
-		var test cliTest
-		test.path = comb[0]
-		test.name = comb[1]
-		test.isBool = comb[2] == "isBool"
-		if test.isBool {
-			tests = append(tests, test)
-			continue
-		}
-
-		for _, nonBoolComb := range combinate(nonBoolTypes, nonBoolFmts) {
-			test.nonBoolType = nonBoolComb[0]
-			test.nonBoolFmt = nonBoolComb[1]
-			if test.nonBoolType != "str" {
-				tests = append(tests, test)
-				continue
-			}
-			for _, nonBoolStrValue := range nonBoolStrValues {
-				test.nonBoolStrValue = nonBoolStrValue
-				tests = append(tests, test)
-			}
-		}
-	}
-
-	childName := mrand.Hex(8)
-	childDashName := mrand.Hex(4) + "-" + mrand.Hex(4)
-	childEqName := mrand.Hex(4) + "=" + mrand.Hex(4)
-
-	var args []string
-	rootCfg := New()
-	childCfg := rootCfg.Child(childName)
-	childDashCfg := rootCfg.Child(childDashName)
-	childEqCfg := rootCfg.Child(childEqName)
-
-	for i := range tests {
-		var pv ParamValue
-		tests[i].exp = &pv
-
-		switch tests[i].name {
-		case "normal":
-			pv.Name = mrand.Hex(8)
-		case "wDash":
-			pv.Name = mrand.Hex(4) + "-" + mrand.Hex(4)
-		case "wEq":
-			pv.Name = mrand.Hex(4) + "=" + mrand.Hex(4)
-		}
-
-		pv.IsBool = tests[i].isBool
-		pv.IsString = !tests[i].isBool && tests[i].nonBoolType == "str"
-
-		var arg string
-		switch tests[i].path {
-		case "root":
-			rootCfg.ParamAdd(pv.Param)
-			arg = "--" + pv.Name
-		case "child":
-			childCfg.ParamAdd(pv.Param)
-			pv.Path = append(pv.Path, childName)
-			arg = "--" + childName + "-" + pv.Name
-		case "childDash":
-			childDashCfg.ParamAdd(pv.Param)
-			pv.Path = append(pv.Path, childDashName)
-			arg = "--" + childDashName + "-" + pv.Name
-		case "childEq":
-			childEqCfg.ParamAdd(pv.Param)
-			pv.Path = append(pv.Path, childEqName)
-			arg = "--" + childEqName + "-" + pv.Name
-		}
-
-		if pv.IsBool {
-			pv.Value = json.RawMessage("true")
-			args = append(args, arg)
-			continue
-		}
-
-		var val string
-		switch tests[i].nonBoolType {
-		case "int":
-			val = strconv.Itoa(mrand.Int())
-			pv.Value = json.RawMessage(val)
-		case "str":
-			switch tests[i].nonBoolStrValue {
-			case "empty":
-				// ez
-			case "normal":
-				val = mrand.Hex(8)
-			case "wDash":
-				val = mrand.Hex(4) + "-" + mrand.Hex(4)
-			case "wEq":
-				val = mrand.Hex(4) + "=" + mrand.Hex(4)
-			}
-			pv.Value = json.RawMessage(`"` + val + `"`)
-		}
-
-		switch tests[i].nonBoolFmt {
-		case "wEq":
-			arg += "=" + val
-			args = append(args, arg)
-		case "woEq":
-			args = append(args, arg, val)
-		}
-	}
-
-	src := SourceCLI{Args: args}
-	pvals, err := src.Parse(rootCfg)
-	require.NoError(t, err)
-	assert.Len(t, pvals, len(tests))
-
-	for _, test := range tests {
-		assert.Contains(t, pvals, *test.exp)
-	}
-
-	// an extra bogus param or value should generate an error
-	src = SourceCLI{Args: append(args, "foo")}
-	_, err = src.Parse(rootCfg)
-	require.Error(t, err)
-
-}
 
 func TestSourceCLIHelp(t *T) {
 	cfg := New()
@@ -310,4 +43,159 @@ func TestSourceCLIHelp(t *T) {
 
 `
 	assert.Equal(t, exp, buf.String())
+}
+
+type testCLIState struct {
+	cfg       *Cfg
+	availCfgs []*Cfg
+
+	SourceCLI
+	expPVs []ParamValue
+}
+
+type testCLIApplyer struct {
+	name        string
+	availCfgI   int // not technically needed, but makes subsequent steps easier
+	path        []string
+	isBool      bool
+	nonBoolType string // "int", "str", "duration", "json"
+	unset       bool
+	nonBoolWEq  bool // use equal sign when setting value
+	nonBoolVal  string
+}
+
+func (tca testCLIApplyer) Apply(ss mtest.State) (mtest.State, error) {
+	s := ss.(testCLIState)
+
+	// the tca needs to get added to its cfg as a Param
+	thisCfg := s.availCfgs[tca.availCfgI]
+	p := Param{
+		Name:     tca.name,
+		IsString: tca.nonBoolType == "str" || tca.nonBoolType == "duration",
+		IsBool:   tca.isBool,
+		// the cli parser doesn't actually care about the other fields of Param,
+		// those are only used by Cfg once it has all ParamValues together
+	}
+	thisCfg.ParamAdd(p)
+
+	// if the arg is set then add it to the cli args and the expected output pvs
+	if !tca.unset {
+		arg := cliKeyPrefix
+		if len(tca.path) > 0 {
+			arg += strings.Join(tca.path, cliKeyJoin) + cliKeyJoin
+		}
+		arg += tca.name
+		if !tca.isBool {
+			if tca.nonBoolWEq {
+				arg += "="
+			} else {
+				s.SourceCLI.Args = append(s.SourceCLI.Args, arg)
+				arg = ""
+			}
+			arg += tca.nonBoolVal
+		}
+		s.SourceCLI.Args = append(s.SourceCLI.Args, arg)
+		log.Print(strings.Join(s.SourceCLI.Args, " "))
+
+		pv := ParamValue{
+			Param: p,
+			Path:  tca.path,
+		}
+		if tca.isBool {
+			pv.Value = json.RawMessage("true")
+		} else {
+			switch tca.nonBoolType {
+			case "str", "duration":
+				pv.Value = json.RawMessage(fmt.Sprintf("%q", tca.nonBoolVal))
+			case "int", "json":
+				pv.Value = json.RawMessage(tca.nonBoolVal)
+			default:
+				panic("shouldn't get here")
+			}
+		}
+		s.expPVs = append(s.expPVs, pv)
+	}
+
+	// and finally the state needs to be checked
+	gotPVs, err := s.SourceCLI.Parse(s.cfg)
+	if err != nil {
+		return nil, err
+	}
+	return s, massert.All(
+		massert.Len(gotPVs, len(s.expPVs)),
+		massert.Subset(s.expPVs, gotPVs),
+	).Assert()
+}
+
+func TestSourceCLI(t *T) {
+	chk := mtest.Checker{
+		Init: func() mtest.State {
+			var s testCLIState
+			s.cfg = New()
+			{
+				a := s.cfg.Child("a")
+				b := s.cfg.Child("b")
+				c := s.cfg.Child("c")
+				ab := a.Child("b")
+				bc := b.Child("c")
+				abc := ab.Child("c")
+				s.availCfgs = []*Cfg{s.cfg, a, b, c, ab, bc, abc}
+			}
+			s.SourceCLI.Args = make([]string, 0, 16)
+			return s
+		},
+		Actions: func(ss mtest.State) []mtest.Action {
+			s := ss.(testCLIState)
+			var tca testCLIApplyer
+			if i := mrand.Intn(8); i == 0 {
+				tca.name = mrand.Hex(1) + "-" + mrand.Hex(8)
+			} else if i == 1 {
+				tca.name = mrand.Hex(1) + "=" + mrand.Hex(8)
+			} else {
+				tca.name = mrand.Hex(8)
+			}
+
+			tca.availCfgI = mrand.Intn(len(s.availCfgs))
+			thisCfg := s.availCfgs[tca.availCfgI]
+			tca.path = thisCfg.Path
+
+			tca.isBool = mrand.Intn(2) == 0
+			if !tca.isBool {
+				tca.nonBoolType = mrand.Element([]string{
+					"int",
+					"str",
+					"duration",
+					"json",
+				}, nil).(string)
+			}
+			tca.unset = mrand.Intn(10) == 0
+
+			if tca.isBool || tca.unset {
+				return []mtest.Action{{Applyer: tca}}
+			}
+
+			tca.nonBoolWEq = mrand.Intn(2) == 0
+			switch tca.nonBoolType {
+			case "int":
+				tca.nonBoolVal = fmt.Sprint(mrand.Int())
+			case "str":
+				tca.nonBoolVal = mrand.Hex(16)
+			case "duration":
+				dur := time.Duration(mrand.Intn(86400)) * time.Second
+				tca.nonBoolVal = dur.String()
+			case "json":
+				b, _ := json.Marshal(map[string]int{
+					mrand.Hex(4): mrand.Int(),
+					mrand.Hex(4): mrand.Int(),
+					mrand.Hex(4): mrand.Int(),
+				})
+				tca.nonBoolVal = string(b)
+			}
+			return []mtest.Action{{Applyer: tca}}
+		},
+	}
+
+	if err := chk.RunUntil(5 * time.Second); err != nil {
+		t.Fatal(err)
+	}
 }
