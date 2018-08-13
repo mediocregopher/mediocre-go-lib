@@ -25,8 +25,12 @@ func (r Rand) Bytes(n int) []byte {
 
 // Hex returns a random hex string which is n characters long.
 func (r Rand) Hex(n int) string {
+	origN := n
+	if n%2 == 1 {
+		n++
+	}
 	b := r.Bytes(hex.DecodedLen(n))
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b)[:origN]
 }
 
 // Element returns a random element from the given slice.
