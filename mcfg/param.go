@@ -2,6 +2,7 @@ package mcfg
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mediocregopher/mediocre-go-lib/mtime"
 )
@@ -40,6 +41,7 @@ type Param struct {
 // ParamAdd adds the given Param to the Cfg. It will panic if a Param of the
 // same Name already exists in the Cfg.
 func (c *Cfg) ParamAdd(p Param) {
+	p.Name = strings.ToLower(p.Name)
 	if _, ok := c.Params[p.Name]; ok {
 		panic(fmt.Sprintf("Cfg.Path:%#v name:%q already exists", c.Path, p.Name))
 	}

@@ -254,6 +254,7 @@ func (c *Cfg) StopRun(ctx context.Context) error {
 // prepended to all configuration options created in the returned sub-Cfg, and
 // must not be empty.
 func (c *Cfg) Child(name string) *Cfg {
+	name = strings.ToLower(name)
 	if _, ok := c.Children[name]; ok {
 		panic(fmt.Sprintf("child Cfg named %q already exists", name))
 	}
