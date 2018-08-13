@@ -62,19 +62,6 @@ func (h *Hook) Also(h2 Hook) {
 	}
 }
 
-// ParamValue describes a value for a parameter which has been parsed by a
-// Source
-type ParamValue struct {
-	Param
-	Path  []string // nil if root
-	Value json.RawMessage
-}
-
-// Source parses ParamValues out of a particular configuration source
-type Source interface {
-	Parse(*Cfg) ([]ParamValue, error)
-}
-
 // Cfg describes a set of configuration parameters and run-time behaviors.
 // Parameters are defined using the Param* methods, and run-time behaviors by
 // the Hook fields on this struct.

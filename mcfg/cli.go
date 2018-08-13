@@ -122,31 +122,14 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 
 func (cli SourceCLI) cliParamVals(cfg *Cfg) (map[string]ParamValue, error) {
 	m := map[string]ParamValue{}
-	for _, param := range cfg.Params {
+	for _, pv := range cfg.allParamValues() {
 		key := cliKeyPrefix
-		if !cfg.IsRoot() {
-			key += strings.Join(cfg.Path, cliKeyJoin) + cliKeyJoin
+		if len(pv.Path) > 0 {
+			key += strings.Join(pv.Path, cliKeyJoin) + cliKeyJoin
 		}
-		key += param.Name
-		m[key] = ParamValue{
-			Param: param,
-			Path:  cfg.Path,
-		}
+		key += pv.Param.Name
+		m[key] = pv
 	}
-
-	for _, child := range cfg.Children {
-		childM, err := cli.cliParamVals(child)
-		if err != nil {
-			return nil, err
-		}
-		for key, pv := range childM {
-			if _, ok := m[key]; ok {
-				return nil, fmt.Errorf("multiple params use the same CLI arg %q", key)
-			}
-			m[key] = pv
-		}
-	}
-
 	return m, nil
 }
 
