@@ -140,62 +140,23 @@ func (c *Cfg) populateParams(src Source) error {
 		}
 	}
 
-	// first dedupe the params. We use this param struct as the key by which to
-	// dedupe by. Its use depends on the json.Marshaler always ordering fields
-	// in a marshaled struct the same way, which isn't the best assumption but
-	// it's ok for now
-	type param struct {
-		Path []string `json:",omitempty"`
-		Name string
-	}
-	paramFullName := func(p param) string {
-		if len(p.Path) == 0 {
-			return p.Name
-		}
-		slice := append(make([]string, 0, len(p.Path)+1), p.Name)
-		slice = append(slice, p.Path...)
-		return strings.Join(slice, "-")
-	}
-
+	// dedupe the ParamValues based on their hashes, with the last ParamValue
+	// taking precedence
 	pvM := map[string]ParamValue{}
 	for _, pv := range pvs {
-		keyB, err := json.Marshal(param{Path: pv.Path, Name: pv.Name})
-		if err != nil {
-			return err
-		}
-		pvM[string(keyB)] = pv
+		pvM[pv.hash()] = pv
 	}
 
-	// check for required params, again using the param struct and the existing
-	// pvM
-	var requiredParams func(*Cfg) []param
-	requiredParams = func(c *Cfg) []param {
-		var out []param
-		for _, p := range c.Params {
-			if !p.Required {
-				continue
-			}
-			out = append(out, param{Path: c.Path, Name: p.Name})
-		}
-		for _, child := range c.Children {
-			out = append(out, requiredParams(child)...)
-		}
-		return out
-	}
-
-	for _, reqP := range requiredParams(c) {
-		keyB, err := json.Marshal(reqP)
-		if err != nil {
-			return err
-		} else if _, ok := pvM[string(keyB)]; !ok {
-			return fmt.Errorf("param %s is required but wasn't populated by any configuration source", paramFullName(reqP))
+	// check for required params
+	for _, pv := range c.allParamValues() {
+		if !pv.Param.Required {
+			continue
+		} else if _, ok := pvM[pv.hash()]; !ok {
+			return fmt.Errorf("param %q is required", pv.displayName())
 		}
 	}
 
 	for _, pv := range pvM {
-		if pv.Into == nil {
-			continue
-		}
 		if err := json.Unmarshal(pv.Value, pv.Into); err != nil {
 			return err
 		}

@@ -123,12 +123,8 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 func (cli SourceCLI) cliParamVals(cfg *Cfg) (map[string]ParamValue, error) {
 	m := map[string]ParamValue{}
 	for _, pv := range cfg.allParamValues() {
-		key := cliKeyPrefix
-		if len(pv.Path) > 0 {
-			key += strings.Join(pv.Path, cliKeyJoin) + cliKeyJoin
-		}
-		key += pv.Param.Name
-		m[key] = pv
+		key := strings.Join(append(pv.Path, pv.Param.Name), cliKeyJoin)
+		m[cliKeyPrefix+key] = pv
 	}
 	return m, nil
 }
