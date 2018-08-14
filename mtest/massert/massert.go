@@ -425,7 +425,7 @@ func Len(set interface{}, length int) Assertion {
 		if err != nil {
 			return err
 		} else if len(setVV) != length {
-			return errors.New("set not correct length")
+			return fmt.Errorf("set not correct length, is %d", len(setVV))
 		}
 		return nil
 	}, toStr(set)+" has length "+strconv.Itoa(length), 0)
