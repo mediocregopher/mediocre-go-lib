@@ -1,7 +1,6 @@
 package mcfg
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -58,18 +57,7 @@ func (env SourceEnv) Parse(cfg *Cfg) ([]ParamValue, error) {
 		}
 		k, v := split[0], split[1]
 		if pv, ok := pvM[k]; ok {
-			if pv.IsBool {
-				if v == "" {
-					pv.Value = json.RawMessage("false")
-				} else {
-					pv.Value = json.RawMessage("true")
-				}
-			} else if pv.IsString && (v == "" || v[0] != '"') {
-				pv.Value = json.RawMessage(`"` + v + `"`)
-
-			} else {
-				pv.Value = json.RawMessage(v)
-			}
+			pv.Value = fuzzyParse(pv.Param, v)
 			pvs = append(pvs, pv)
 		}
 	}

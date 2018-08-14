@@ -8,6 +8,22 @@ import (
 	"strings"
 )
 
+func fuzzyParse(p Param, v string) json.RawMessage {
+	if p.IsBool {
+		if v == "" || v == "0" || v == "false" {
+			return json.RawMessage("false")
+		}
+		return json.RawMessage("true")
+
+	} else if p.IsString && (v == "" || v[0] != '"') {
+		return json.RawMessage(`"` + v + `"`)
+	}
+
+	return json.RawMessage(v)
+}
+
+// TODO moving Path into Param would make a lot more sense
+
 // ParamValue describes a value for a parameter which has been parsed by a
 // Source
 type ParamValue struct {
@@ -66,6 +82,23 @@ func (ss Sources) Parse(c *Cfg) ([]ParamValue, error) {
 			return nil, err
 		}
 		pvs = append(pvs, innerPVs...)
+	}
+	return pvs, nil
+}
+
+// SourceMap implements the Source interface by mapping parameter names to
+// values for them. The names are comprised of the path and name of a Param
+// joined by "-" characters, i.e. `strings.Join(append(p.Path, p.Name), "-")`.
+// Values will be parsed in the same way that SourceEnv parses its variables.
+type SourceMap map[string]string
+
+func (m SourceMap) Parse(c *Cfg) ([]ParamValue, error) {
+	pvs := make([]ParamValue, 0, len(m))
+	for _, pv := range c.allParamValues() {
+		if v, ok := m[pv.displayName()]; ok {
+			pv.Value = fuzzyParse(pv.Param, v)
+			pvs = append(pvs, pv)
+		}
 	}
 	return pvs, nil
 }

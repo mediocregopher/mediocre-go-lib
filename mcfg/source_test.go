@@ -159,3 +159,23 @@ func TestSources(t *T) {
 		massert.Equal(3, *c),
 	))
 }
+
+func TestSourceMap(t *T) {
+	cfg := New()
+	a := cfg.ParamRequiredInt("a", "")
+	foo := cfg.Child("foo")
+	b := foo.ParamRequiredString("b", "")
+	c := foo.ParamBool("c", "")
+
+	err := cfg.populateParams(SourceMap{
+		"a":     "4",
+		"foo-b": "bbb",
+		"foo-c": "1",
+	})
+	massert.Fatal(t, massert.All(
+		massert.Nil(err),
+		massert.Equal(4, *a),
+		massert.Equal("bbb", *b),
+		massert.Equal(true, *c),
+	))
+}

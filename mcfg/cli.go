@@ -1,7 +1,6 @@
 package mcfg
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -23,6 +22,11 @@ import (
 // stdout and the process will exit. Since all normally-defined parameters must
 // being with double-dash ("--") they won't ever conflict with the help option.
 //
+// SourceCLI behaves a little differently with boolean parameters. Setting the
+// value of a boolean parameter directly _must_ be done with an equals, for
+// example: `--boolean-flag=1` or `--boolean-flag=false`. Using the
+// space-separated format will not work. If a boolean has no equal-separated
+// value it is assumed to be setting the value to `true`, as would be expected.
 type SourceCLI struct {
 	Args []string // if nil then os.Args[1:] is used
 
@@ -86,26 +90,19 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 
 		// pvOk is always true at this point, and so pv is filled in
 
-		if pv.IsBool {
-			// if it's a boolean we don't expect there to be a following value,
-			// it's just a flag
-			if pvStrValOk {
-				return nil, fmt.Errorf("param %q is a boolean and cannot have a value", arg)
-			}
-			pv.Value = json.RawMessage("true")
-
+		// As a special case for CLI, if a boolean has no value set it means it
+		// is true.
+		if pv.IsBool && !pvStrValOk {
+			pvStrVal = "true"
+			pvStrValOk = true
 		} else if !pvStrValOk {
 			// everything else should have a value. if pvStrVal isn't filled it
 			// means the next arg should be one. Continue the loop, it'll get
 			// filled with the next one (hopefully)
 			continue
-
-		} else if pv.IsString && (pvStrVal == "" || pvStrVal[0] != '"') {
-			pv.Value = json.RawMessage(`"` + pvStrVal + `"`)
-
-		} else {
-			pv.Value = json.RawMessage(pvStrVal)
 		}
+
+		pv.Value = fuzzyParse(pv.Param, pvStrVal)
 
 		pvs = append(pvs, pv)
 		key = ""

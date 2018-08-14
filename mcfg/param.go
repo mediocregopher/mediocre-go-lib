@@ -95,6 +95,11 @@ func (c *Cfg) ParamRequiredString(name, usage string) *string {
 
 // ParamBool returns a *bool which will be populated once the Cfg is run, and
 // which defaults to false if unconfigured
+//
+// The default behavior of all Sources is that a boolean parameter will be set
+// to true unless the value is "", 0, or false. In the case of the CLI Source
+// the value will also be true when the parameter is used with no value at all,
+// as would be expected.
 func (c *Cfg) ParamBool(name, usage string) *bool {
 	var b bool
 	c.ParamAdd(Param{Name: name, Usage: usage, IsBool: true, Into: &b})
