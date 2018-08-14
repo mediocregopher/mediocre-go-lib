@@ -11,6 +11,15 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 )
 
+// CfgSource returns an mcfg.Source which takes in configuration info from the
+// environment and from the CLI.
+func CfgSource() mcfg.Source {
+	return mcfg.Sources{
+		mcfg.SourceEnv{},
+		mcfg.SourceCLI{},
+	}
+}
+
 // TODO this isn't going to work. At some point there will be something like
 // mhttp which will have some glue code for it in here, but then something
 // within it which logs (like the http server), and then there'll be an import

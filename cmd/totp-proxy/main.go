@@ -104,7 +104,7 @@ func main() {
 	})
 
 	mhttp.CfgServer(cfg, authHandler)
-	if err := cfg.StartRun(context.Background(), new(mcfg.SourceCLI)); err != nil {
+	if err := cfg.StartRun(context.Background(), m.CfgSource()); err != nil {
 		mlog.Fatal("error during startup", mlog.ErrKV(err))
 	}
 	select {}
