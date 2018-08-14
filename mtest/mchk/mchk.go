@@ -12,7 +12,6 @@ package mchk
 import (
 	"bytes"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -29,19 +28,10 @@ type RunErr struct {
 }
 
 func (ce RunErr) Error() string {
-	typeName := func(p Params) string {
-		t := fmt.Sprintf("%T", p)
-		tSplit := strings.SplitN(t, ".", 2)
-		if len(tSplit) > 1 {
-			return tSplit[1] // remove the package name
-		}
-		return tSplit[0]
-	}
-
 	buf := new(bytes.Buffer)
 	fmt.Fprintf(buf, "Test case: []mtest.Params{\n")
 	for _, p := range ce.Params {
-		fmt.Fprintf(buf, "\t%s(%#v),\n", typeName(p), p)
+		fmt.Fprintf(buf, "\t%#v,\n", p)
 	}
 	fmt.Fprintf(buf, "}\n")
 	fmt.Fprintf(buf, "Generated error: %s\n", ce.Err)
