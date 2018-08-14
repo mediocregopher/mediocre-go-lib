@@ -51,3 +51,21 @@ func (cfg *Cfg) allParamValues() []ParamValue {
 type Source interface {
 	Parse(*Cfg) ([]ParamValue, error)
 }
+
+// Sources combines together multiple Source instances into one. It will call
+// Parse on each element individually. Later Sources take precedence over
+// previous ones in the slice.
+type Sources []Source
+
+// Parse implements the method for the Source interface.
+func (ss Sources) Parse(c *Cfg) ([]ParamValue, error) {
+	var pvs []ParamValue
+	for _, s := range ss {
+		innerPVs, err := s.Parse(c)
+		if err != nil {
+			return nil, err
+		}
+		pvs = append(pvs, innerPVs...)
+	}
+	return pvs, nil
+}

@@ -3,6 +3,7 @@ package mcfg
 import (
 	"encoding/json"
 	"fmt"
+	. "testing"
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
@@ -139,4 +140,22 @@ func (scs srcCommonState) assert(s Source) error {
 		massert.Len(gotPVs, len(scs.expPVs)),
 		massert.Subset(scs.expPVs, gotPVs),
 	).Assert()
+}
+
+func TestSources(t *T) {
+	cfg := New()
+	a := cfg.ParamRequiredInt("a", "")
+	b := cfg.ParamRequiredInt("b", "")
+	c := cfg.ParamRequiredInt("c", "")
+
+	err := cfg.populateParams(Sources{
+		SourceCLI{Args: []string{"--a=1", "--b=666"}},
+		SourceEnv{Env: []string{"B=2", "C=3"}},
+	})
+	massert.Fatal(t, massert.All(
+		massert.Nil(err),
+		massert.Equal(1, *a),
+		massert.Equal(2, *b),
+		massert.Equal(3, *c),
+	))
 }
