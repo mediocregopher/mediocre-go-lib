@@ -105,12 +105,10 @@ func (scs srcCommonState) applyCfgAndPV(p srcCommonParams) srcCommonState {
 		// those are only used by Cfg once it has all ParamValues together
 	}
 	thisCfg.ParamAdd(cfgP)
+	cfgP = thisCfg.Params[p.name] // get it back out to get any added fields
 
 	if !p.unset {
-		pv := ParamValue{
-			Param: cfgP,
-			Path:  p.path,
-		}
+		pv := ParamValue{Param: cfgP}
 		if p.isBool {
 			pv.Value = json.RawMessage("true")
 		} else {

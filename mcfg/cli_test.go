@@ -21,9 +21,9 @@ func TestSourceCLIHelp(t *T) {
 	src := SourceCLI{}
 
 	buf := new(bytes.Buffer)
-	pvM, err := src.cliParamVals(cfg)
+	pM, err := src.cliParams(cfg)
 	require.NoError(t, err)
-	SourceCLI{}.printHelp(buf, pvM)
+	SourceCLI{}.printHelp(buf, pM)
 
 	exp := `
 --bar (Flag)

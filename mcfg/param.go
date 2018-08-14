@@ -1,6 +1,9 @@
 package mcfg
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -36,6 +39,39 @@ type Param struct {
 	// json.Unmarshal'd. The value being pointed to also determines the default
 	// value of the parameter.
 	Into interface{}
+
+	// The Path field of the Cfg this Param is attached to. NOTE that this
+	// will be automatically filled in when the Param is added to the Cfg.
+	Path []string
+}
+
+func (p Param) fuzzyParse(v string) json.RawMessage {
+	if p.IsBool {
+		if v == "" || v == "0" || v == "false" {
+			return json.RawMessage("false")
+		}
+		return json.RawMessage("true")
+
+	} else if p.IsString && (v == "" || v[0] != '"') {
+		return json.RawMessage(`"` + v + `"`)
+	}
+
+	return json.RawMessage(v)
+}
+
+func (p Param) fullName() string {
+	return strings.Join(append(p.Path, p.Name), "-")
+}
+
+func (p Param) hash() string {
+	h := md5.New()
+	for _, path := range p.Path {
+		fmt.Fprintf(h, "pathEl:%q\n", path)
+	}
+	fmt.Fprintf(h, "name:%q\n", p.Name)
+	hStr := hex.EncodeToString(h.Sum(nil))
+	// we add the displayName to it to make debugging easier
+	return p.fullName() + "/" + hStr
 }
 
 // ParamAdd adds the given Param to the Cfg. It will panic if a Param of the
@@ -45,7 +81,20 @@ func (c *Cfg) ParamAdd(p Param) {
 	if _, ok := c.Params[p.Name]; ok {
 		panic(fmt.Sprintf("Cfg.Path:%#v name:%q already exists", c.Path, p.Name))
 	}
+	p.Path = c.Path
 	c.Params[p.Name] = p
+}
+
+func (c *Cfg) allParams() []Param {
+	params := make([]Param, 0, len(c.Params))
+	for _, p := range c.Params {
+		params = append(params, p)
+	}
+
+	for _, child := range c.Children {
+		params = append(params, child.allParams()...)
+	}
+	return params
 }
 
 // ParamInt64 returns an *int64 which will be populated once the Cfg is run

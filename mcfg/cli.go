@@ -47,7 +47,7 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 		args = os.Args[1:]
 	}
 
-	pvM, err := cli.cliParamVals(cfg)
+	pM, err := cli.cliParams(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -64,11 +64,11 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 			pvStrVal = arg
 			pvStrValOk = true
 		} else if !cli.DisableHelpPage && arg == cliHelpArg {
-			cli.printHelp(os.Stdout, pvM)
+			cli.printHelp(os.Stdout, pM)
 			os.Stdout.Sync()
 			os.Exit(1)
 		} else {
-			for key, pv = range pvM {
+			for key, pv.Param = range pM {
 				if arg == key {
 					pvOk = true
 					break
@@ -102,7 +102,7 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 			continue
 		}
 
-		pv.Value = fuzzyParse(pv.Param, pvStrVal)
+		pv.Value = pv.Param.fuzzyParse(pvStrVal)
 
 		pvs = append(pvs, pv)
 		key = ""
@@ -117,28 +117,28 @@ func (cli SourceCLI) Parse(cfg *Cfg) ([]ParamValue, error) {
 	return pvs, nil
 }
 
-func (cli SourceCLI) cliParamVals(cfg *Cfg) (map[string]ParamValue, error) {
-	m := map[string]ParamValue{}
-	for _, pv := range cfg.allParamValues() {
-		key := strings.Join(append(pv.Path, pv.Param.Name), cliKeyJoin)
-		m[cliKeyPrefix+key] = pv
+func (cli SourceCLI) cliParams(cfg *Cfg) (map[string]Param, error) {
+	m := map[string]Param{}
+	for _, p := range cfg.allParams() {
+		key := strings.Join(append(p.Path, p.Name), cliKeyJoin)
+		m[cliKeyPrefix+key] = p
 	}
 	return m, nil
 }
 
-func (cli SourceCLI) printHelp(w io.Writer, pvM map[string]ParamValue) {
-	type pvEntry struct {
+func (cli SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
+	type pEntry struct {
 		arg string
-		ParamValue
+		Param
 	}
 
-	pvA := make([]pvEntry, 0, len(pvM))
-	for arg, pv := range pvM {
-		pvA = append(pvA, pvEntry{arg: arg, ParamValue: pv})
+	pA := make([]pEntry, 0, len(pM))
+	for arg, p := range pM {
+		pA = append(pA, pEntry{arg: arg, Param: p})
 	}
 
-	sort.Slice(pvA, func(i, j int) bool {
-		return pvA[i].arg < pvA[j].arg
+	sort.Slice(pA, func(i, j int) bool {
+		return pA[i].arg < pA[j].arg
 	})
 
 	fmtDefaultVal := func(ptr interface{}) string {
@@ -155,16 +155,16 @@ func (cli SourceCLI) printHelp(w io.Writer, pvM map[string]ParamValue) {
 		return fmt.Sprint(val.Interface())
 	}
 
-	for _, pvE := range pvA {
-		fmt.Fprintf(w, "\n%s", pvE.arg)
-		if pvE.IsBool {
+	for _, p := range pA {
+		fmt.Fprintf(w, "\n%s", p.arg)
+		if p.IsBool {
 			fmt.Fprintf(w, " (Flag)")
-		} else if defVal := fmtDefaultVal(pvE.Into); defVal != "" {
+		} else if defVal := fmtDefaultVal(p.Into); defVal != "" {
 			fmt.Fprintf(w, " (Default: %s)", defVal)
 		}
 		fmt.Fprintf(w, "\n")
-		if pvE.Usage != "" {
-			fmt.Fprintln(w, "\t"+pvE.Usage)
+		if p.Usage != "" {
+			fmt.Fprintln(w, "\t"+p.Usage)
 		}
 	}
 	fmt.Fprintf(w, "\n")

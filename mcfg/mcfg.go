@@ -10,7 +10,6 @@ import (
 )
 
 // TODO Sources:
-// - Env
 // - Env file
 // - JSON file
 // - YAML file
@@ -130,14 +129,9 @@ func (c *Cfg) FullName() string {
 }
 
 func (c *Cfg) populateParams(src Source) error {
-	// we allow for nil Source here for tests
-	// TODO make Source stub type which tests could use here instead
-	var pvs []ParamValue
-	if src != nil {
-		var err error
-		if pvs, err = src.Parse(c); err != nil {
-			return err
-		}
+	pvs, err := src.Parse(c)
+	if err != nil {
+		return err
 	}
 
 	// dedupe the ParamValues based on their hashes, with the last ParamValue
@@ -148,11 +142,11 @@ func (c *Cfg) populateParams(src Source) error {
 	}
 
 	// check for required params
-	for _, pv := range c.allParamValues() {
-		if !pv.Param.Required {
+	for _, p := range c.allParams() {
+		if !p.Required {
 			continue
-		} else if _, ok := pvM[pv.hash()]; !ok {
-			return fmt.Errorf("param %q is required", pv.displayName())
+		} else if _, ok := pvM[p.hash()]; !ok {
+			return fmt.Errorf("param %q is required", p.fullName())
 		}
 	}
 

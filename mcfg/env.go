@@ -43,10 +43,10 @@ func (env SourceEnv) Parse(cfg *Cfg) ([]ParamValue, error) {
 		kvs = os.Environ()
 	}
 
-	pvM := map[string]ParamValue{}
-	for _, pv := range cfg.allParamValues() {
-		name := env.expectedName(pv.Path, pv.Name)
-		pvM[name] = pv
+	pM := map[string]Param{}
+	for _, p := range cfg.allParams() {
+		name := env.expectedName(p.Path, p.Name)
+		pM[name] = p
 	}
 
 	pvs := make([]ParamValue, 0, len(kvs))
@@ -56,9 +56,11 @@ func (env SourceEnv) Parse(cfg *Cfg) ([]ParamValue, error) {
 			return nil, fmt.Errorf("malformed environment kv %q", kv)
 		}
 		k, v := split[0], split[1]
-		if pv, ok := pvM[k]; ok {
-			pv.Value = fuzzyParse(pv.Param, v)
-			pvs = append(pvs, pv)
+		if p, ok := pM[k]; ok {
+			pvs = append(pvs, ParamValue{
+				Param: p,
+				Value: p.fuzzyParse(v),
+			})
 		}
 	}
 
