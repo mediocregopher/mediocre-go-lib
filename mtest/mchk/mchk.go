@@ -1,6 +1,7 @@
 // Package mchk implements a framework for writing property checker tests, where
 // test cases are generated randomly and performed, and failing test cases are
-// output in a way so as to easily be able to rerun them.
+// output in a way so as to easily be able to rerun them. In addition failing
+// test cases are minimized so the smallest possible case is returned.
 //
 // The central type of the package is Checker. For every Run call on Checker a
 // new initial State is generated, and then an Action is generated off of that.
@@ -13,6 +14,8 @@ import (
 	"bytes"
 	"fmt"
 	"time"
+
+	"github.com/mediocregopher/mediocre-go-lib/mrand"
 )
 
 // RunErr represents an test case error which was returned by a Checker Run.
@@ -85,6 +88,10 @@ type Checker struct {
 	// MaxLength indicates the maximum number of Actions which can be strung
 	// together in a single Run. Defaults to 10 if not set.
 	MaxLength int
+
+	// If true the Run and RunFor methods will return the first erroring Action
+	// sequence, without trying to remove extraneous Actions from it first.
+	DontMinimize bool
 }
 
 func (c Checker) withDefaults() Checker {
@@ -112,7 +119,9 @@ func (c Checker) RunFor(maxDuration time.Duration) error {
 
 // Run generates a single sequence of Actions and applies them in order,
 // returning nil once the number of Actions performed has reached MaxLength or a
-// CheckErr if an error is returned.
+// CheckErr if an error is returned. If an error is to be returned this will
+// attempt to minimize the Actions sequence in order to find the smallest
+// reproducible test case.
 func (c Checker) Run() error {
 	c = c.withDefaults()
 	s := c.Init()
@@ -123,7 +132,21 @@ func (c Checker) Run() error {
 		s, err = c.Apply(s, action)
 		params = append(params, action.Params)
 
-		if err != nil {
+		if err != nil && c.DontMinimize {
+			return RunErr{
+				Params: params,
+				Err:    err,
+			}
+		} else if err != nil {
+			minParams := c.MinimizeCase(params...)
+			if minErr := c.RunCase(minParams...); minErr != nil {
+				// RunCase already wraps errs in RunErrs, so that's not
+				// necessary here
+				return minErr
+			}
+			// if the minParams didn't return an error here it means the test
+			// case isn't consistent, as a fallback return the original which
+			// definitely errored
 			return RunErr{
 				Params: params,
 				Err:    err,
@@ -132,6 +155,38 @@ func (c Checker) Run() error {
 			continue
 		} else if action.Terminate || len(params) >= c.MaxLength {
 			return nil
+		}
+	}
+}
+
+// MinimizeCase repeatedly randomly picks a Param from the set and performs
+// RunCase without that Param. It does this until it can't remove a single Param
+// without the error ceasing, and returns that minimized set.
+func (c Checker) MinimizeCase(params ...Params) []Params {
+outer:
+	for {
+		if len(params) == 1 {
+			return params
+		}
+
+		tried := map[int]bool{}
+		for {
+			if len(tried) == len(params) {
+				return params
+			}
+			i := mrand.Intn(len(params))
+			if tried[i] {
+				continue
+			}
+			newParams := make([]Params, 0, len(params)-1)
+			newParams = append(newParams, params[:i]...)
+			newParams = append(newParams, params[i+1:]...)
+			if err := c.RunCase(newParams...); err == nil {
+				tried[i] = true
+				continue
+			}
+			params = newParams
+			continue outer
 		}
 	}
 }
