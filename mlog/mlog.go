@@ -252,6 +252,7 @@ type Logger struct {
 	msgBufPool       *sync.Pool
 	msgCh            chan msg
 	testMsgWrittenCh chan struct{} // only initialized/used in tests
+	wg               sync.WaitGroup
 }
 
 // NewLogger initializes and returns a new instance of Logger which will write
@@ -268,7 +269,11 @@ func NewLogger(wc io.WriteCloser) *Logger {
 		msgCh:    make(chan msg, 1024),
 		maxLevel: InfoLevel.Uint(),
 	}
-	go l.spin()
+	l.wg.Add(1)
+	go func() {
+		defer l.wg.Done()
+		l.spin()
+	}()
 	return l
 }
 
@@ -328,10 +333,13 @@ func (l *Logger) WithKV(kvs ...KVer) *Logger {
 }
 
 // Stop stops and cleans up any running go-routines and resources held by the
-// Logger, allowing it to be garbage-collected. The Logger should not be used
-// after Stop is called
+// Logger, allowing it to be garbage-collected. This will flush any remaining
+// messages to the io.WriteCloser before returning.
+//
+// The Logger should not be used after Stop is called
 func (l *Logger) Stop() {
 	close(l.msgCh)
+	l.wg.Wait()
 }
 
 // Log can be used to manually log a message of some custom defined Level. kvs
