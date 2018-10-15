@@ -290,6 +290,10 @@ func toStr(i interface{}) string {
 
 // Equal asserts that the two values are exactly equal, and uses the
 // reflect.DeepEqual function to determine if they are.
+//
+// TODO this does not currently handle the case of creating the Assertion using
+// a reference type (like a map), changing one of the map's keys, and then
+// calling Assert.
 func Equal(a, b interface{}) Assertion {
 	return newAssertion(func() error {
 		if !reflect.DeepEqual(a, b) {
@@ -320,6 +324,10 @@ func Nil(i interface{}) Assertion {
 	}, toStr(i)+" is nil", 0)
 }
 
+type setKV struct {
+	k, v interface{}
+}
+
 func toSet(i interface{}, keyedMap bool) ([]interface{}, error) {
 	v := reflect.ValueOf(i)
 	switch v.Kind() {
@@ -334,7 +342,7 @@ func toSet(i interface{}, keyedMap bool) ([]interface{}, error) {
 		vv := make([]interface{}, len(keys))
 		for i := range keys {
 			if keyedMap {
-				vv[i] = struct{ k, v interface{} }{
+				vv[i] = setKV{
 					k: keys[i].Interface(),
 					v: v.MapIndex(keys[i]).Interface(),
 				}
@@ -351,20 +359,19 @@ func toSet(i interface{}, keyedMap bool) ([]interface{}, error) {
 // Subset asserts that the given subset is a subset of the given set. Both must
 // be of the same type and may be arrays, slices, or maps.
 func Subset(set, subset interface{}) Assertion {
+	if reflect.TypeOf(set) != reflect.TypeOf(subset) {
+		panic(errors.New("set and subset aren't of same type"))
+	}
+
+	setVV, err := toSet(set, true)
+	if err != nil {
+		panic(err)
+	}
+	subsetVV, err := toSet(subset, true)
+	if err != nil {
+		panic(err)
+	}
 	return newAssertion(func() error {
-		if reflect.TypeOf(set) != reflect.TypeOf(subset) {
-			return errors.New("set and subset aren't of same type")
-		}
-
-		setVV, err := toSet(set, true)
-		if err != nil {
-			return err
-		}
-		subsetVV, err := toSet(subset, true)
-		if err != nil {
-			return err
-		}
-
 		// this is obviously not the most efficient way to do this
 	outer:
 		for i := range subsetVV {
@@ -383,12 +390,12 @@ func Subset(set, subset interface{}) Assertion {
 // set may be an array, a slice, or a map, and if it's a map then the elem will
 // need to be a value in it.
 func Has(set, elem interface{}) Assertion {
-	return newAssertion(func() error {
-		setVV, err := toSet(set, false)
-		if err != nil {
-			return err
-		}
+	setVV, err := toSet(set, false)
+	if err != nil {
+		panic(err)
+	}
 
+	return newAssertion(func() error {
 		for i := range setVV {
 			if reflect.DeepEqual(setVV[i], elem) {
 				return nil
@@ -401,14 +408,16 @@ func Has(set, elem interface{}) Assertion {
 // HasKey asserts that the given set (which must be a map type) has the given
 // element as a key in it.
 func HasKey(set, elem interface{}) Assertion {
+	if v := reflect.ValueOf(set); v.Kind() != reflect.Map {
+		panic(fmt.Errorf("type %s is not a map", v.Type()))
+	}
+	setVV, err := toSet(set, true)
+	if err != nil {
+		panic(err)
+	}
 	return newAssertion(func() error {
-		v := reflect.ValueOf(set)
-		if v.Kind() != reflect.Map {
-			return fmt.Errorf("type %s is not a map", v.Type())
-		}
-
-		for _, key := range v.MapKeys() {
-			if reflect.DeepEqual(key.Interface(), elem) {
+		for _, kv := range setVV {
+			if reflect.DeepEqual(kv.(setKV).k, elem) {
 				return nil
 			}
 		}
@@ -420,11 +429,13 @@ func HasKey(set, elem interface{}) Assertion {
 // set may be an array, a slice, or a map. A nil value'd set is considered to be
 // a length of zero.
 func Len(set interface{}, length int) Assertion {
+	setVV, err := toSet(set, false)
+	if err != nil {
+		panic(err)
+	}
+
 	return newAssertion(func() error {
-		setVV, err := toSet(set, false)
-		if err != nil {
-			return err
-		} else if len(setVV) != length {
+		if len(setVV) != length {
 			return fmt.Errorf("set not correct length, is %d", len(setVV))
 		}
 		return nil

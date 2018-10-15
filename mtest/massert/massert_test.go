@@ -145,15 +145,19 @@ func TestSubset(t *T) {
 	))
 
 	Fatal(t, None(
-		Subset([]int64{1, 2, 3}, []int{1}),
 		Subset([]int{}, []int{1, 2, 3}),
 		Subset([]int{1, 2, 3}, []int{4}),
 		Subset([]int{1, 2, 3}, []int{1, 3, 2, 4}),
 
-		Subset(map[int]int{1: 1, 2: 2}, map[int]int64{1: 1}),
 		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 2}),
 		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 1, 3: 3}),
 	))
+
+	// make sure changes don't retroactively fail the assertion
+	m := map[int]int{1: 1, 2: 2}
+	a := Subset(m, map[int]int{1: 1})
+	m[1] = 2
+	Fatal(t, a)
 }
 
 func TestHas(t *T) {
@@ -176,6 +180,12 @@ func TestHas(t *T) {
 		Has(map[int]int{1: 2}, 1),
 		Has(map[int]int{1: 2, 2: 1}, 3),
 	))
+
+	// make sure changes don't retroactively fail the assertion
+	m := map[int]int{1: 1}
+	a := Has(m, 1)
+	m[1] = 2
+	Fatal(t, a)
 }
 
 func TestHasKey(t *T) {
@@ -186,11 +196,16 @@ func TestHasKey(t *T) {
 	))
 
 	Fatal(t, None(
-		HasKey([]int{}, 1),
-		HasKey([]int{1}, 1),
 		HasKey(map[int]int{}, 1),
 		HasKey(map[int]int{2: 2}, 1),
 	))
+
+	// make sure changes don't retroactively fail the assertion
+	m := map[int]int{1: 1}
+	a := HasKey(m, 1)
+	delete(m, 1)
+	Fatal(t, a)
+
 }
 
 func TestLen(t *T) {
@@ -215,4 +230,10 @@ func TestLen(t *T) {
 		Len(map[int]int(nil), 1),
 		Len(map[int]int{}, 1),
 	))
+
+	// make sure changes don't retroactively fail the assertion
+	m := map[int]int{1: 1}
+	a := Len(m, 1)
+	m[2] = 2
+	Fatal(t, a)
 }
