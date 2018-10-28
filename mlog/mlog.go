@@ -252,7 +252,9 @@ type Logger struct {
 	msgBufPool       *sync.Pool
 	msgCh            chan msg
 	testMsgWrittenCh chan struct{} // only initialized/used in tests
-	wg               sync.WaitGroup
+
+	stopCh chan struct{}
+	wg     *sync.WaitGroup
 }
 
 // NewLogger initializes and returns a new instance of Logger which will write
@@ -268,6 +270,8 @@ func NewLogger(wc io.WriteCloser) *Logger {
 		},
 		msgCh:    make(chan msg, 1024),
 		maxLevel: InfoLevel.Uint(),
+		stopCh:   make(chan struct{}),
+		wg:       new(sync.WaitGroup),
 	}
 	l.wg.Add(1)
 	go func() {
@@ -282,21 +286,42 @@ func (l *Logger) cp() *Logger {
 	return &l2
 }
 
-func (l *Logger) spin() {
-	for msg := range l.msgCh {
-		if _, err := io.Copy(l.wc, msg.buf); err != nil {
-			go l.Error("error writing to Logger's WriteCloser", ErrKV(err))
-		}
-		l.msgBufPool.Put(msg.buf)
-		if l.testMsgWrittenCh != nil {
-			l.testMsgWrittenCh <- struct{}{}
-		}
-		if msg.msg.Level.Uint() == 0 {
-			l.wc.Close()
-			os.Exit(1)
+func (l *Logger) drain() {
+	for {
+		select {
+		case m := <-l.msgCh:
+			l.writeMsg(m)
+		default:
+			return
 		}
 	}
-	l.wc.Close()
+}
+
+func (l *Logger) writeMsg(m msg) {
+	if _, err := m.buf.WriteTo(l.wc); err != nil {
+		go l.Error("error writing to Logger's WriteCloser", ErrKV(err))
+	}
+	l.msgBufPool.Put(m.buf)
+	if l.testMsgWrittenCh != nil {
+		l.testMsgWrittenCh <- struct{}{}
+	}
+	if m.msg.Level.Uint() == 0 {
+		l.wc.Close()
+		os.Exit(1)
+	}
+}
+
+func (l *Logger) spin() {
+	defer l.wc.Close()
+	for {
+		select {
+		case m := <-l.msgCh:
+			l.writeMsg(m)
+		case <-l.stopCh:
+			l.drain()
+			return
+		}
+	}
 }
 
 // WithMaxLevelUint returns a copy of the Logger with its max logging level set
@@ -338,7 +363,7 @@ func (l *Logger) WithKV(kvs ...KVer) *Logger {
 //
 // The Logger should not be used after Stop is called
 func (l *Logger) Stop() {
-	close(l.msgCh)
+	close(l.stopCh)
 	l.wg.Wait()
 }
 
@@ -359,7 +384,10 @@ func (l *Logger) Log(lvl Level, msgStr string, kvs ...KVer) {
 		return
 	}
 
-	l.msgCh <- msg{buf: buf, msg: m}
+	select {
+	case l.msgCh <- msg{buf: buf, msg: m}:
+	case <-l.stopCh:
+	}
 
 	// if a Fatal is logged then we're merely waiting here for spin to call
 	// os.Exit, and this go-routine shouldn't be allowed to continue
