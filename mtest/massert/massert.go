@@ -282,6 +282,16 @@ func None(aa ...Assertion) Assertion {
 	return newAssertion(fn, fmtMultiDescr("None", aa...), 0)
 }
 
+// Err returns an Assertion which always fails with the given error.
+func Err(err error) Assertion {
+	return newAssertion(func() error { return err }, "", 0)
+}
+
+// Errf is like Err but allows for a formatted string.
+func Errf(str string, args ...interface{}) Assertion {
+	return Err(fmt.Errorf(str, args...))
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func toStr(i interface{}) string {
