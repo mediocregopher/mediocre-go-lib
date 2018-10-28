@@ -36,12 +36,13 @@ func CfgSource() mcfg.Source {
 // If the cfg is nil then mlog.DefaultLogger is returned.
 func Log(cfg *mcfg.Cfg, kvs ...mlog.KVer) *mlog.Logger {
 	fn := cfg.FullName()
-	l := mlog.DefaultLogger.WithWriteFn(func(w io.Writer, msg mlog.Message) error {
+	l := mlog.DefaultLogger.Clone()
+	l.SetWriteFn(func(w io.Writer, msg mlog.Message) error {
 		msg.Msg = "(" + fn + ") " + msg.Msg
 		return mlog.DefaultWriteFn(w, msg)
 	})
 	if len(kvs) > 0 {
-		l = l.WithKV(kvs...)
+		l.AddKV(kvs...)
 	}
 	return l
 }
