@@ -62,7 +62,7 @@ func TestLogger(t *T) {
 		select {
 		case <-l.testMsgWrittenCh:
 		case <-time.After(1 * time.Second):
-			t.Fatal("waited too long for msg to write")
+			return massert.Errf("waited too long for msg to write")
 		}
 		out, err := buf.ReadString('\n')
 		return massert.All(
@@ -82,32 +82,30 @@ func TestLogger(t *T) {
 		assertOut("~ ERROR -- buz\n"),
 	))
 
-	{
-		l := l.WithMaxLevel(WarnLevel)
-		l.Log(DebugLevel, "foo")
-		l.Log(InfoLevel, "bar")
-		l.Log(WarnLevel, "baz")
-		l.Log(ErrorLevel, "buz", KV{"a": "b"})
-		massert.Fatal(t, massert.All(
-			assertOut("~ WARN -- baz\n"),
-			assertOut("~ ERROR -- buz -- a=\"b\"\n"),
-		))
-	}
+	l.SetMaxLevel(WarnLevel)
+	l.Log(DebugLevel, "foo")
+	l.Log(InfoLevel, "bar")
+	l.Log(WarnLevel, "baz")
+	l.Log(ErrorLevel, "buz", KV{"a": "b"})
+	massert.Fatal(t, massert.All(
+		assertOut("~ WARN -- baz\n"),
+		assertOut("~ ERROR -- buz -- a=\"b\"\n"),
+	))
 
-	{
-		l2 := l.WithWriteFn(func(w io.Writer, msg Message) error {
-			msg.Msg = strings.ToUpper(msg.Msg)
-			return DefaultWriteFn(w, msg)
-		})
-		l2.Log(InfoLevel, "bar")
-		l2.Log(WarnLevel, "baz")
-		l.Log(ErrorLevel, "buz")
-		massert.Fatal(t, massert.All(
-			assertOut("~ INFO -- BAR\n"),
-			assertOut("~ WARN -- BAZ\n"),
-			assertOut("~ ERROR -- buz\n"),
-		))
-	}
+	l2 := l.Clone()
+	l2.SetMaxLevel(InfoLevel)
+	l2.SetWriteFn(func(w io.Writer, msg Message) error {
+		msg.Msg = strings.ToUpper(msg.Msg)
+		return DefaultWriteFn(w, msg)
+	})
+	l2.Log(InfoLevel, "bar")
+	l2.Log(WarnLevel, "baz")
+	l.Log(ErrorLevel, "buz")
+	massert.Fatal(t, massert.All(
+		assertOut("~ INFO -- BAR\n"),
+		assertOut("~ WARN -- BAZ\n"),
+		assertOut("~ ERROR -- buz\n"),
+	))
 }
 
 func TestDefaultWriteFn(t *T) {

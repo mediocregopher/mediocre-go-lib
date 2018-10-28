@@ -244,7 +244,9 @@ type msg struct {
 // Logger wraps a WriteFn and an io.WriteCloser such that logging calls on the
 // Logger will use them (in a thread-safe manner) to write out log messages.
 type Logger struct {
-	wc       io.WriteCloser
+	wc io.WriteCloser
+
+	l        *sync.RWMutex
 	wfn      WriteFn
 	maxLevel uint
 	kv       KVer
@@ -261,17 +263,18 @@ type Logger struct {
 // to the given WriteCloser.
 func NewLogger(wc io.WriteCloser) *Logger {
 	l := &Logger{
-		wc:  wc,
-		wfn: DefaultWriteFn,
+		wc:       wc,
+		l:        new(sync.RWMutex),
+		wfn:      DefaultWriteFn,
+		maxLevel: InfoLevel.Uint(),
 		msgBufPool: &sync.Pool{
 			New: func() interface{} {
 				return new(bytes.Buffer)
 			},
 		},
-		msgCh:    make(chan msg, 1024),
-		maxLevel: InfoLevel.Uint(),
-		stopCh:   make(chan struct{}),
-		wg:       new(sync.WaitGroup),
+		msgCh:  make(chan msg, 1024),
+		stopCh: make(chan struct{}),
+		wg:     new(sync.WaitGroup),
 	}
 	l.wg.Add(1)
 	go func() {
@@ -281,8 +284,13 @@ func NewLogger(wc io.WriteCloser) *Logger {
 	return l
 }
 
-func (l *Logger) cp() *Logger {
+// Clone returns a usable copy of the *Logger. Changes to the returned Logger
+// will not effect the original, e.g. if the SetMaxLevel is called on one it
+// will not effect the max level of written logs on the other. If Stop is called
+// on any Logger it effects all parent and child Loggers produced from Clone.
+func (l *Logger) Clone() *Logger {
 	l2 := *l
+	l2.l = new(sync.RWMutex)
 	return &l2
 }
 
@@ -324,37 +332,35 @@ func (l *Logger) spin() {
 	}
 }
 
-// WithMaxLevelUint returns a copy of the Logger with its max logging level set
-// to the given uint. The Logger will not log any messages with a higher
-// Level.Uint value.
-func (l *Logger) WithMaxLevelUint(i uint) *Logger {
-	l = l.cp()
+// SetMaxLevelUint sets the Logger's max logging level so that it will not log
+// any messages with a higher Level.Uint value.
+func (l *Logger) SetMaxLevelUint(i uint) {
+	l.l.Lock()
+	defer l.l.Unlock()
 	l.maxLevel = i
-	return l
 }
 
-// WithMaxLevel returns a copy of the Logger with its max Level set to the given
-// one. The Logger will not log any messages with a higher Level.Uint value.
-func (l *Logger) WithMaxLevel(lvl Level) *Logger {
-	return l.WithMaxLevelUint(lvl.Uint())
+// SetMaxLevel sets the Logger's max logging level so that it will not log any
+// messages with a higher Level.Uint value.
+func (l *Logger) SetMaxLevel(lvl Level) {
+	l.SetMaxLevelUint(lvl.Uint())
 }
 
-// WithWriteFn returns a copy of the Logger which will use the given WriteFn
-// to format and write Messages to the Logger's WriteCloser. This does not
-// affect the WriteFn of the original Logger, and both can be used at the same
-// time.
-func (l *Logger) WithWriteFn(wfn WriteFn) *Logger {
-	l = l.cp()
+// SetWriteFn sets the Logger to use the given WriteFn to format and write
+// Messages to Logger's WriteCloser.
+func (l *Logger) SetWriteFn(wfn WriteFn) {
+	l.l.Lock()
+	defer l.l.Unlock()
 	l.wfn = wfn
-	return l
 }
 
-// WithKV returns a copy of Logger which will implicitly use the KVers for all
-// log messages.
-func (l *Logger) WithKV(kvs ...KVer) *Logger {
-	l = l.cp()
+// AddKV sets the Logger to implicitly add the given KVers to all log messages.
+// This will not affect KVer data previously added the Logger or its parent (see
+// Clone), except to overwrite keys in the case of overlap.
+func (l *Logger) AddKV(kvs ...KVer) {
+	l.l.Lock()
+	defer l.l.Unlock()
 	l.kv = MergeInto(l.kv, kvs...)
-	return l
 }
 
 // Stop stops and cleans up any running go-routines and resources held by the
@@ -371,6 +377,9 @@ func (l *Logger) Stop() {
 // will be Merge'd automatically. If the Level is a fatal (Uint() == 0) then
 // calling this will never return, and the process will have os.Exit(1) called.
 func (l *Logger) Log(lvl Level, msgStr string, kvs ...KVer) {
+	l.l.RLock()
+	defer l.l.RUnlock()
+
 	if l.maxLevel < lvl.Uint() {
 		return
 	}
