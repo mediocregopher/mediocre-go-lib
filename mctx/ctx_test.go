@@ -6,15 +6,11 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
-func TestContext(t *T) {
+func TestInheritance(t *T) {
 	ctx := New()
-	SetMutableValue(ctx, "one", 1)
-
 	ctx1 := ChildOf(ctx, "1")
 	ctx1a := ChildOf(ctx1, "a")
-	SetMutableValue(ctx1, "one", 2)
 	ctx1b := ChildOf(ctx1, "b")
-	SetMutableValue(ctx1b, "one", 3)
 	ctx2 := ChildOf(ctx, "2")
 
 	massert.Fatal(t, massert.All(
@@ -47,12 +43,29 @@ func TestContext(t *T) {
 		massert.Equal(Parent(ctx1b), ctx1),
 		massert.Equal(Parent(ctx2), ctx),
 	))
+}
 
-	massert.Fatal(t, massert.All(
-		massert.Equal(MutableValue(ctx, "one"), 1),
-		massert.Equal(MutableValue(ctx1, "one"), 2),
-		massert.Equal(MutableValue(ctx1a, "one"), 1),
-		massert.Equal(MutableValue(ctx1b, "one"), 3),
-		massert.Equal(MutableValue(ctx2, "one"), 1),
-	))
+func TestMutableValues(t *T) {
+	fn := func(v interface{}) interface{} {
+		if v == nil {
+			return 0
+		}
+		return v.(int) + 1
+	}
+
+	var aa []massert.Assertion
+
+	ctx := New()
+	aa = append(aa, massert.Equal(GetSetMutableValue(ctx, false, 0, fn), 0))
+	aa = append(aa, massert.Equal(GetSetMutableValue(ctx, false, 0, fn), 1))
+	aa = append(aa, massert.Equal(GetSetMutableValue(ctx, true, 0, fn), 1))
+
+	aa = append(aa, massert.Equal(MutableValue(ctx, 0), 1))
+
+	ctx1 := ChildOf(ctx, "one")
+	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, true, 0, fn), 0))
+	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, false, 0, fn), 1))
+	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, true, 0, fn), 1))
+
+	massert.Fatal(t, massert.All(aa...))
 }

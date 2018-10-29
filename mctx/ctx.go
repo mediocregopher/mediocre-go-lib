@@ -131,14 +131,6 @@ func ChildOf(ctx Context, name string) Context {
 	//	return mlog.DefaultWriteFn(w, msg)
 	//})
 
-	// copy mutable values
-	if len(s.mutVals) > 0 {
-		childS.mutVals = make(map[interface{}]interface{}, len(s.mutVals))
-		for key, val := range s.mutVals {
-			childS.mutVals[key] = val
-		}
-	}
-
 	// create child's ctx and store it in parent
 	childCtx := withCtxState(ctx, childS)
 	if s.children == nil {
@@ -151,19 +143,6 @@ func ChildOf(ctx Context, name string) Context {
 // TODO these might not be worth the effort, they're very subject to
 // race-conditions
 
-// SetMutableValue is like WithMutable, except rather than leaving the original
-// ctx unaffected it modifies the value in that context. Children of this
-// context will inherit an independent copy of its immutable values.
-func SetMutableValue(ctx Context, key, value interface{}) {
-	s := getCtxState(ctx)
-	s.l.Lock()
-	defer s.l.Unlock()
-	if s.mutVals == nil {
-		s.mutVals = map[interface{}]interface{}{}
-	}
-	s.mutVals[key] = value
-}
-
 // MutableValue acts like the Value method, except that it only deals with
 // keys/values set by SetMutableValue.
 func MutableValue(ctx Context, key interface{}) interface{} {
@@ -174,4 +153,54 @@ func MutableValue(ctx Context, key interface{}) interface{} {
 		return nil
 	}
 	return s.mutVals[key]
+}
+
+// GetSetMutableValue is used to interact with a mutable value on the context in
+// a thread-safe way. The key's value is retrieved and passed to the callback.
+// The value returned from the callback is stored to back into the context as
+// well as being returned from this function.
+//
+// If noCallbackIfSet is set to true, then this function will only return the
+// value for the key if it's already set and not use the callback at all.
+//
+// The callback returning nil is equivalent to unsetting the value.
+//
+// Children of this context will _not_ inherit any of its mutable values.
+func GetSetMutableValue(
+	ctx Context, noCallbackIfSet bool,
+	key interface{}, fn func(interface{}) interface{},
+) interface{} {
+	s := getCtxState(ctx)
+
+	if noCallbackIfSet {
+		s.l.RLock()
+		if s.mutVals != nil && s.mutVals[key] != nil {
+			defer s.l.RUnlock()
+			return s.mutVals[key]
+		}
+		s.l.RUnlock()
+	}
+
+	s.l.Lock()
+	defer s.l.Unlock()
+
+	if s.mutVals == nil {
+		s.mutVals = map[interface{}]interface{}{}
+	}
+	val := s.mutVals[key]
+
+	// It's possible something happened between the first check inside the
+	// read-lock and now, so double check this case. It's still good to have the
+	// read-lock check there, it'll handle 99% of the cases.
+	if noCallbackIfSet && val != nil {
+		return val
+	}
+
+	val = fn(val)
+	if val == nil {
+		delete(s.mutVals, key)
+	} else {
+		s.mutVals[key] = val
+	}
+	return val
 }
