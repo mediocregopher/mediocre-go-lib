@@ -169,12 +169,24 @@ func Prefix(kv KVer, prefix string) KVer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stringer generates and returns a string.
+type Stringer interface {
+	String() string
+}
+
+// String is simply a string which implements Stringer.
+type String string
+
+func (str String) String() string {
+	return string(str)
+}
+
 // Message describes a message to be logged, after having already resolved the
 // KVer
 type Message struct {
 	Level
-	Msg string
-	KV  KV
+	Description Stringer
+	KV          KV
 }
 
 func stringSlice(kv KV) [][2]string {
@@ -206,7 +218,7 @@ func DefaultFormat(w io.Writer, msg Message) error {
 			_, err = fmt.Fprintf(w, s, args...)
 		}
 	}
-	write("~ %s -- %s", msg.Level.String(), msg.Msg)
+	write("~ %s -- %s", msg.Level.String(), msg.Description.String())
 	if len(msg.KV) > 0 {
 		write(" --")
 		for _, kve := range stringSlice(msg.KV) {
@@ -292,14 +304,13 @@ func (l *Logger) WithHandler(h Handler) *Logger {
 // Log can be used to manually log a message of some custom defined Level. kvs
 // will be Merge'd automatically. If the Level is a fatal (Uint() == 0) then
 // calling this will never return, and the process will have os.Exit(1) called.
-func (l *Logger) Log(lvl Level, msgStr string, kvs ...KVer) {
-	if l.maxLevel < lvl.Uint() {
+func (l *Logger) Log(msg Message) {
+	if l.maxLevel < msg.Level.Uint() {
 		return
 	}
 
-	m := Message{Level: lvl, Msg: msgStr, KV: Merge(kvs...).KV()}
-	if err := l.h(m); err != nil {
-		go l.Log(ErrorLevel, "Logger.Handler returned error", ErrKV(err))
+	if err := l.h(msg); err != nil {
+		go l.Error("Logger.Handler returned error", ErrKV(err))
 		return
 	}
 
@@ -307,33 +318,41 @@ func (l *Logger) Log(lvl Level, msgStr string, kvs ...KVer) {
 		l.testMsgWrittenCh <- struct{}{}
 	}
 
-	if m.Level.Uint() == 0 {
+	if msg.Level.Uint() == 0 {
 		os.Exit(1)
 	}
 }
 
+func mkMsg(lvl Level, descr string, kvs ...KVer) Message {
+	return Message{
+		Level:       lvl,
+		Description: String(descr),
+		KV:          Merge(kvs...).KV(),
+	}
+}
+
 // Debug logs a DebugLevel message, merging the KVers together first
-func (l *Logger) Debug(msg string, kvs ...KVer) {
-	l.Log(DebugLevel, msg, kvs...)
+func (l *Logger) Debug(descr string, kvs ...KVer) {
+	l.Log(mkMsg(DebugLevel, descr, kvs...))
 }
 
 // Info logs a InfoLevel message, merging the KVers together first
-func (l *Logger) Info(msg string, kvs ...KVer) {
-	l.Log(InfoLevel, msg, kvs...)
+func (l *Logger) Info(descr string, kvs ...KVer) {
+	l.Log(mkMsg(InfoLevel, descr, kvs...))
 }
 
 // Warn logs a WarnLevel message, merging the KVers together first
-func (l *Logger) Warn(msg string, kvs ...KVer) {
-	l.Log(WarnLevel, msg, kvs...)
+func (l *Logger) Warn(descr string, kvs ...KVer) {
+	l.Log(mkMsg(WarnLevel, descr, kvs...))
 }
 
 // Error logs a ErrorLevel message, merging the KVers together first
-func (l *Logger) Error(msg string, kvs ...KVer) {
-	l.Log(ErrorLevel, msg, kvs...)
+func (l *Logger) Error(descr string, kvs ...KVer) {
+	l.Log(mkMsg(ErrorLevel, descr, kvs...))
 }
 
 // Fatal logs a FatalLevel message, merging the KVers together first. A Fatal
 // message automatically stops the process with an os.Exit(1)
-func (l *Logger) Fatal(msg string, kvs ...KVer) {
-	l.Log(FatalLevel, msg, kvs...)
+func (l *Logger) Fatal(descr string, kvs ...KVer) {
+	l.Log(mkMsg(FatalLevel, descr, kvs...))
 }

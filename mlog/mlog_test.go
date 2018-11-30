@@ -68,10 +68,10 @@ func TestLogger(t *T) {
 	}
 
 	// Default max level should be INFO
-	l.Log(DebugLevel, "foo")
-	l.Log(InfoLevel, "bar")
-	l.Log(WarnLevel, "baz")
-	l.Log(ErrorLevel, "buz")
+	l.Debug("foo")
+	l.Info("bar")
+	l.Warn("baz")
+	l.Error("buz")
 	massert.Fatal(t, massert.All(
 		assertOut("~ INFO -- bar\n"),
 		assertOut("~ WARN -- baz\n"),
@@ -79,10 +79,10 @@ func TestLogger(t *T) {
 	))
 
 	l = l.WithMaxLevel(WarnLevel)
-	l.Log(DebugLevel, "foo")
-	l.Log(InfoLevel, "bar")
-	l.Log(WarnLevel, "baz")
-	l.Log(ErrorLevel, "buz", KV{"a": "b"})
+	l.Debug("foo")
+	l.Info("bar")
+	l.Warn("baz")
+	l.Error("buz", KV{"a": "b"})
 	massert.Fatal(t, massert.All(
 		assertOut("~ WARN -- baz\n"),
 		assertOut("~ ERROR -- buz -- a=\"b\"\n"),
@@ -90,12 +90,12 @@ func TestLogger(t *T) {
 
 	l2 := l.WithMaxLevel(InfoLevel)
 	l2 = l2.WithHandler(func(msg Message) error {
-		msg.Msg = strings.ToUpper(msg.Msg)
+		msg.Description = String(strings.ToUpper(msg.Description.String()))
 		return h(msg)
 	})
-	l2.Log(InfoLevel, "bar")
-	l2.Log(WarnLevel, "baz")
-	l.Log(ErrorLevel, "buz")
+	l2.Info("bar")
+	l2.Warn("baz")
+	l.Error("buz")
 	massert.Fatal(t, massert.All(
 		assertOut("~ INFO -- BAR\n"),
 		assertOut("~ WARN -- BAZ\n"),
@@ -119,7 +119,7 @@ func TestDefaultFormat(t *T) {
 		)
 	}
 
-	msg := Message{Level: InfoLevel, Msg: "this is a test"}
+	msg := Message{Level: InfoLevel, Description: String("this is a test")}
 	massert.Fatal(t, assertFormat("INFO -- this is a test", msg))
 
 	msg.KV = KV{}.KV()
