@@ -2,8 +2,6 @@ package mlog
 
 import (
 	"bytes"
-	"io"
-	"io/ioutil"
 	"regexp"
 	"strings"
 	. "testing"
@@ -49,13 +47,11 @@ func TestKV(t *T) {
 
 func TestLogger(t *T) {
 	buf := new(bytes.Buffer)
-	l := NewLogger(struct {
-		io.Writer
-		io.Closer
-	}{
-		Writer: buf,
-		Closer: ioutil.NopCloser(nil),
-	})
+	h := func(msg Message) error {
+		return DefaultFormat(buf, msg)
+	}
+
+	l := NewLogger().WithHandler(h)
 	l.testMsgWrittenCh = make(chan struct{}, 10)
 
 	assertOut := func(expected string) massert.Assertion {
@@ -82,7 +78,7 @@ func TestLogger(t *T) {
 		assertOut("~ ERROR -- buz\n"),
 	))
 
-	l.SetMaxLevel(WarnLevel)
+	l = l.WithMaxLevel(WarnLevel)
 	l.Log(DebugLevel, "foo")
 	l.Log(InfoLevel, "bar")
 	l.Log(WarnLevel, "baz")
@@ -92,11 +88,10 @@ func TestLogger(t *T) {
 		assertOut("~ ERROR -- buz -- a=\"b\"\n"),
 	))
 
-	l2 := l.Clone()
-	l2.SetMaxLevel(InfoLevel)
-	l2.SetWriteFn(func(w io.Writer, msg Message) error {
+	l2 := l.WithMaxLevel(InfoLevel)
+	l2 = l2.WithHandler(func(msg Message) error {
 		msg.Msg = strings.ToUpper(msg.Msg)
-		return DefaultWriteFn(w, msg)
+		return h(msg)
 	})
 	l2.Log(InfoLevel, "bar")
 	l2.Log(WarnLevel, "baz")
@@ -108,11 +103,11 @@ func TestLogger(t *T) {
 	))
 }
 
-func TestDefaultWriteFn(t *T) {
+func TestDefaultFormat(t *T) {
 	assertFormat := func(postfix string, msg Message) massert.Assertion {
 		expectedRegex := regexp.MustCompile(`^~ ` + postfix + `\n$`)
 		buf := bytes.NewBuffer(make([]byte, 0, 128))
-		writeErr := DefaultWriteFn(buf, msg)
+		writeErr := DefaultFormat(buf, msg)
 		line, err := buf.ReadString('\n')
 		return massert.Comment(
 			massert.All(

@@ -75,9 +75,7 @@ func withCtxState(ctx Context, s *ctxState) Context {
 // New returns a new context which can be used as the root context for all
 // purposes in this framework.
 func New() Context {
-	return withCtxState(Context(context.Background()), &ctxState{
-		//logger: mlog.NewLogger(os.Stderr),
-	})
+	return withCtxState(Context(context.Background()), &ctxState{})
 }
 
 // Path returns the sequence of names which were used to produce this context
