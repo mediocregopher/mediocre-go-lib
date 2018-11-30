@@ -43,6 +43,14 @@ func TestInheritance(t *T) {
 		massert.Equal(Parent(ctx1b), ctx1),
 		massert.Equal(Parent(ctx2), ctx),
 	))
+
+	massert.Fatal(t, massert.All(
+		massert.Equal(Root(ctx), ctx),
+		massert.Equal(Root(ctx1), ctx),
+		massert.Equal(Root(ctx1a), ctx),
+		massert.Equal(Root(ctx1b), ctx),
+		massert.Equal(Root(ctx2), ctx),
+	))
 }
 
 func TestMutableValues(t *T) {

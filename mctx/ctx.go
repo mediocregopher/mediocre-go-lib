@@ -1,10 +1,12 @@
-// Package mctx provides a framework, based around the Context type, for
-// managing configuration, initialization, runtime, and shutdown of a binary.
-// The framework allows components to manage these aspects individually by means
-// of a heirarchical system.
+// Package mctx extends the builtin context package to organize Contexts into a
+// heirarchy. Each node in the hierarchy is given a name and is aware of all of
+// its ancestors.
 //
-// Each node in the hierarchy is given a name and is aware of all of its
-// ancestors, and can incorporate this information into its functionality.
+// This package also provides extra functionality which allows contexts
+// to be more useful when used in the heirarchy.
+//
+// All functions and methods in this package are thread-safe unless otherwise
+// noted.
 package mctx
 
 import (
@@ -54,6 +56,7 @@ type ctxState struct {
 	parent   Context
 	children map[string]Context
 
+	mutL    sync.RWMutex
 	mutVals map[interface{}]interface{}
 }
 
@@ -102,10 +105,27 @@ func Parent(ctx Context) Context {
 	return getCtxState(ctx).parent
 }
 
+// Root returns the root Context from which this Context and all of its parents
+// were derived (i.e. the Context which was originally returned from New).
+//
+// If the given Context is the root then it is returned as-id.
+func Root(ctx Context) Context {
+	for {
+		s := getCtxState(ctx)
+		if s.parent == nil {
+			return ctx
+		}
+		ctx = s.parent
+	}
+}
+
 // ChildOf creates a child of the given context with the given name and returns
 // it. The Path of the returned context will be the path of the parent with its
 // name appended to it. The Children function can be called on the parent to
 // retrieve all children which have been made using this function.
+//
+// TODO If the given Context already has a child with the given name that child
+// will be returned.
 func ChildOf(ctx Context, name string) Context {
 	s, childS := getCtxState(ctx), new(ctxState)
 
@@ -120,17 +140,6 @@ func ChildOf(ctx Context, name string) Context {
 	// set child's parent field
 	childS.parent = ctx
 
-	// set up child's logger
-	//pathStr := "/"
-	//if len(childS.path) > 0 {
-	//	pathStr += path.Join(childS.path...)
-	//}
-	//childS.logger = s.logger.Clone()
-	//childS.logger.SetWriteFn(func(w io.Writer, msg mlog.Message) error {
-	//	msg.Msg = "(" + pathStr + ") " + msg.Msg
-	//	return mlog.DefaultWriteFn(w, msg)
-	//})
-
 	// create child's ctx and store it in parent
 	childCtx := withCtxState(ctx, childS)
 	if s.children == nil {
@@ -140,15 +149,12 @@ func ChildOf(ctx Context, name string) Context {
 	return childCtx
 }
 
-// TODO these might not be worth the effort, they're very subject to
-// race-conditions
-
 // MutableValue acts like the Value method, except that it only deals with
 // keys/values set by SetMutableValue.
 func MutableValue(ctx Context, key interface{}) interface{} {
 	s := getCtxState(ctx)
-	s.l.RLock()
-	defer s.l.RUnlock()
+	s.mutL.RLock()
+	defer s.mutL.RUnlock()
 	if s.mutVals == nil {
 		return nil
 	}
@@ -157,15 +163,19 @@ func MutableValue(ctx Context, key interface{}) interface{} {
 
 // GetSetMutableValue is used to interact with a mutable value on the context in
 // a thread-safe way. The key's value is retrieved and passed to the callback.
-// The value returned from the callback is stored to back into the context as
-// well as being returned from this function.
+// The value returned from the callback is stored back into the context as well
+// as being returned from this function.
 //
-// If noCallbackIfSet is set to true, then this function will only return the
-// value for the key if it's already set and not use the callback at all.
+// If noCallbackIfSet is set to true, then if the key is already set the value
+// will be returned without calling the callback.
 //
 // The callback returning nil is equivalent to unsetting the value.
 //
 // Children of this context will _not_ inherit any of its mutable values.
+//
+// Within the callback it is fine to call other functions/methods on the
+// Context, except for those related to mutable values (e.g. MutableValue and
+// SetMutableValue).
 func GetSetMutableValue(
 	ctx Context, noCallbackIfSet bool,
 	key interface{}, fn func(interface{}) interface{},
@@ -173,16 +183,16 @@ func GetSetMutableValue(
 	s := getCtxState(ctx)
 
 	if noCallbackIfSet {
-		s.l.RLock()
+		s.mutL.RLock()
 		if s.mutVals != nil && s.mutVals[key] != nil {
-			defer s.l.RUnlock()
+			defer s.mutL.RUnlock()
 			return s.mutVals[key]
 		}
-		s.l.RUnlock()
+		s.mutL.RUnlock()
 	}
 
-	s.l.Lock()
-	defer s.l.Unlock()
+	s.mutL.Lock()
+	defer s.mutL.Unlock()
 
 	if s.mutVals == nil {
 		s.mutVals = map[interface{}]interface{}{}
