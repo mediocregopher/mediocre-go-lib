@@ -1,9 +1,9 @@
 // Package mctx extends the builtin context package to organize Contexts into a
-// heirarchy. Each node in the hierarchy is given a name and is aware of all of
+// hierarchy. Each node in the hierarchy is given a name and is aware of all of
 // its ancestors.
 //
 // This package also provides extra functionality which allows contexts
-// to be more useful when used in the heirarchy.
+// to be more useful when used in the hierarchy.
 //
 // All functions and methods in this package are thread-safe unless otherwise
 // noted.
