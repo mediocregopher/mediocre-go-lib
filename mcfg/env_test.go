@@ -34,7 +34,7 @@ func TestSourceEnv(t *T) {
 		Apply: func(ss mchk.State, a mchk.Action) (mchk.State, error) {
 			s := ss.(state)
 			p := a.Params.(params)
-			s.srcCommonState = s.srcCommonState.applyCfgAndPV(p.srcCommonParams)
+			s.srcCommonState = s.srcCommonState.applyCtxAndPV(p.srcCommonParams)
 			if !p.unset {
 				kv := strings.Join(append(p.path, p.name), "_")
 				kv = strings.Replace(kv, "-", "_", -1)

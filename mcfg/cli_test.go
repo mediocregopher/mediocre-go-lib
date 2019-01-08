@@ -6,6 +6,7 @@ import (
 	. "testing"
 	"time"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/mchk"
 	"github.com/stretchr/testify/assert"
@@ -13,15 +14,15 @@ import (
 )
 
 func TestSourceCLIHelp(t *T) {
-	cfg := New()
-	cfg.ParamInt("foo", 5, "Test int param")
-	cfg.ParamBool("bar", "Test bool param")
-	cfg.ParamString("baz", "baz", "Test string param")
-	cfg.ParamString("baz2", "", "")
+	ctx := mctx.New()
+	Int(ctx, "foo", 5, "Test int param")
+	Bool(ctx, "bar", "Test bool param")
+	String(ctx, "baz", "baz", "Test string param")
+	String(ctx, "baz2", "", "")
 	src := SourceCLI{}
 
 	buf := new(bytes.Buffer)
-	pM, err := src.cliParams(cfg)
+	pM, err := src.cliParams(collectParams(ctx))
 	require.NoError(t, err)
 	SourceCLI{}.printHelp(buf, pM)
 
@@ -71,7 +72,7 @@ func TestSourceCLI(t *T) {
 			s := ss.(state)
 			p := a.Params.(params)
 
-			s.srcCommonState = s.srcCommonState.applyCfgAndPV(p.srcCommonParams)
+			s.srcCommonState = s.srcCommonState.applyCtxAndPV(p.srcCommonParams)
 			if !p.unset {
 				arg := cliKeyPrefix
 				if len(p.path) > 0 {

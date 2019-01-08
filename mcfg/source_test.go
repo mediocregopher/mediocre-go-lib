@@ -6,6 +6,7 @@ import (
 	. "testing"
 	"time"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
@@ -15,8 +16,8 @@ import (
 // all the code they share
 
 type srcCommonState struct {
-	cfg       *Cfg
-	availCfgs []*Cfg
+	ctx       mctx.Context
+	availCtxs []mctx.Context
 	expPVs    []ParamValue
 
 	// each specific test should wrap this to add the Source itself
@@ -24,22 +25,22 @@ type srcCommonState struct {
 
 func newSrcCommonState() srcCommonState {
 	var scs srcCommonState
-	scs.cfg = New()
+	scs.ctx = mctx.New()
 	{
-		a := scs.cfg.Child("a")
-		b := scs.cfg.Child("b")
-		c := scs.cfg.Child("c")
-		ab := a.Child("b")
-		bc := b.Child("c")
-		abc := ab.Child("c")
-		scs.availCfgs = []*Cfg{scs.cfg, a, b, c, ab, bc, abc}
+		a := mctx.ChildOf(scs.ctx, "a")
+		b := mctx.ChildOf(scs.ctx, "b")
+		c := mctx.ChildOf(scs.ctx, "c")
+		ab := mctx.ChildOf(a, "b")
+		bc := mctx.ChildOf(b, "c")
+		abc := mctx.ChildOf(ab, "c")
+		scs.availCtxs = []mctx.Context{scs.ctx, a, b, c, ab, bc, abc}
 	}
 	return scs
 }
 
 type srcCommonParams struct {
 	name        string
-	availCfgI   int // not technically needed, but finding the cfg easier
+	availCtxI   int // not technically needed, but makes finding the ctx easier
 	path        []string
 	isBool      bool
 	nonBoolType string // "int", "str", "duration", "json"
@@ -55,9 +56,9 @@ func (scs srcCommonState) next() srcCommonParams {
 		p.name = mrand.Hex(8)
 	}
 
-	p.availCfgI = mrand.Intn(len(scs.availCfgs))
-	thisCfg := scs.availCfgs[p.availCfgI]
-	p.path = thisCfg.Path
+	p.availCtxI = mrand.Intn(len(scs.availCtxs))
+	thisCtx := scs.availCtxs[p.availCtxI]
+	p.path = mctx.Path(thisCtx)
 
 	p.isBool = mrand.Intn(2) == 0
 	if !p.isBool {
@@ -93,22 +94,22 @@ func (scs srcCommonState) next() srcCommonParams {
 	return p
 }
 
-// adds the new cfg param to the cfg, and if the param is expected to be set in
+// adds the new param to the ctx, and if the param is expected to be set in
 // the Source adds it to the expected ParamValues as well
-func (scs srcCommonState) applyCfgAndPV(p srcCommonParams) srcCommonState {
-	thisCfg := scs.availCfgs[p.availCfgI]
-	cfgP := Param{
+func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
+	thisCtx := scs.availCtxs[p.availCtxI]
+	ctxP := Param{
 		Name:     p.name,
 		IsString: p.nonBoolType == "str" || p.nonBoolType == "duration",
 		IsBool:   p.isBool,
 		// the Sources don't actually care about the other fields of Param,
-		// those are only used by Cfg once it has all ParamValues together
+		// those are only used by Populate once it has all ParamValues together
 	}
-	thisCfg.ParamAdd(cfgP)
-	cfgP = thisCfg.Params[p.name] // get it back out to get any added fields
+	MustAdd(thisCtx, ctxP)
+	ctxP = get(thisCtx).params[p.name] // get it back out to get any added fields
 
 	if !p.unset {
-		pv := ParamValue{Param: cfgP}
+		pv := ParamValue{Param: ctxP}
 		if p.isBool {
 			pv.Value = json.RawMessage("true")
 		} else {
@@ -130,7 +131,7 @@ func (scs srcCommonState) applyCfgAndPV(p srcCommonParams) srcCommonState {
 // given a Source asserts that it's Parse method returns the expected
 // ParamValues
 func (scs srcCommonState) assert(s Source) error {
-	gotPVs, err := s.Parse(scs.cfg)
+	gotPVs, err := s.Parse(collectParams(scs.ctx))
 	if err != nil {
 		return err
 	}
@@ -141,12 +142,12 @@ func (scs srcCommonState) assert(s Source) error {
 }
 
 func TestSources(t *T) {
-	cfg := New()
-	a := cfg.ParamRequiredInt("a", "")
-	b := cfg.ParamRequiredInt("b", "")
-	c := cfg.ParamRequiredInt("c", "")
+	ctx := mctx.New()
+	a := RequiredInt(ctx, "a", "")
+	b := RequiredInt(ctx, "b", "")
+	c := RequiredInt(ctx, "c", "")
 
-	err := cfg.populateParams(Sources{
+	err := Populate(ctx, Sources{
 		SourceCLI{Args: []string{"--a=1", "--b=666"}},
 		SourceEnv{Env: []string{"B=2", "C=3"}},
 	})
@@ -159,13 +160,13 @@ func TestSources(t *T) {
 }
 
 func TestSourceMap(t *T) {
-	cfg := New()
-	a := cfg.ParamRequiredInt("a", "")
-	foo := cfg.Child("foo")
-	b := foo.ParamRequiredString("b", "")
-	c := foo.ParamBool("c", "")
+	ctx := mctx.New()
+	a := RequiredInt(ctx, "a", "")
+	foo := mctx.ChildOf(ctx, "foo")
+	b := RequiredString(foo, "b", "")
+	c := Bool(foo, "c", "")
 
-	err := cfg.populateParams(SourceMap{
+	err := Populate(ctx, SourceMap{
 		"a":     "4",
 		"foo-b": "bbb",
 		"foo-c": "1",

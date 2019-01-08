@@ -13,12 +13,15 @@ import (
 // underscores and making all characters uppercase, as well as changing all
 // dashes to underscores.
 //
-//	cfg := mcfg.New().Child("foo").Child("bar")
-//	addr := cfg.ParamString("srv-addr", "", "Some address")
+//	ctx := mctx.New()
+//	ctx = mctx.ChildOf(ctx, "foo")
+//	ctx = mctx.ChildOf(ctx, "bar")
+//	addr := mcfg.String(ctx, "srv-addr", "", "Some address")
 //	// the Env option to fill addr will be "FOO_BAR_SRV_ADDR"
 //
 type SourceEnv struct {
-	Env []string // in the format key=value
+	// In the format key=value. Defaults to os.Environ() if nil.
+	Env []string
 
 	// If set then all expected Env options must be prefixed with this string,
 	// which will be uppercased and have dashes replaced with underscores like
@@ -37,14 +40,14 @@ func (env SourceEnv) expectedName(path []string, name string) string {
 }
 
 // Parse implements the method for the Source interface
-func (env SourceEnv) Parse(cfg *Cfg) ([]ParamValue, error) {
+func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 	kvs := env.Env
 	if kvs == nil {
 		kvs = os.Environ()
 	}
 
 	pM := map[string]Param{}
-	for _, p := range cfg.allParams() {
+	for _, p := range params {
 		name := env.expectedName(p.Path, p.Name)
 		pM[name] = p
 	}

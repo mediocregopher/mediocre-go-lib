@@ -7,23 +7,28 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mtime"
 )
 
-// Param is a configuration parameter which can be added to a Cfg. The Param
-// will exist relative to a Cfg's Path. For example, a Param with name "addr"
-// under a Cfg with Path of []string{"foo","bar"} will be setabble on the CLI
-// via "--foo-bar-addr". Other configuration Sources may treat the path/name
-// differently, however.
+// Param is a configuration parameter which can be populated by Populate. The
+// Param will exist as part of an mctx.Context, relative to its Path. For
+// example, a Param with name "addr" under an mctx.Context with Path of
+// []string{"foo","bar"} will be setabble on the CLI via "--foo-bar-addr". Other
+// configuration Sources may treat the path/name differently, however.
+//
+// Param values are always unmarshaled as JSON values into the Into field of the
+// Param, regardless of the actual Source.
 type Param struct {
-	// How the parameter will be identified within a Cfg instance
+	// How the parameter will be identified within an mctx.Context.
 	Name string
-	// A helpful description of how a parameter is expected to be used
+
+	// A helpful description of how a parameter is expected to be used.
 	Usage string
 
 	// If the parameter's value is expected to be read as a go string. This is
-	// used for configuration sources like CLI which will automatically escape
-	// the parameter's value with double-quotes
+	// used for configuration sources like CLI which will automatically add
+	// double-quotes around the value if they aren't already there.
 	IsString bool
 
 	// If the parameter's value is expected to be a boolean. This is used for
@@ -31,8 +36,7 @@ type Param struct {
 	// differently.
 	IsBool bool
 
-	// If true then the parameter _must_ be set by at least one configuration
-	// source
+	// If true then the parameter _must_ be set by at least one Source.
 	Required bool
 
 	// The pointer/interface into which the configuration value will be
@@ -74,111 +78,118 @@ func (p Param) hash() string {
 	return p.fullName() + "/" + hStr
 }
 
-// ParamAdd adds the given Param to the Cfg. It will panic if a Param of the
-// same Name already exists in the Cfg.
-func (c *Cfg) ParamAdd(p Param) {
-	p.Name = strings.ToLower(p.Name)
-	if _, ok := c.Params[p.Name]; ok {
-		panic(fmt.Sprintf("Cfg.Path:%#v name:%q already exists", c.Path, p.Name))
+// MustAdd adds the given Param to the mctx.Context. It will panic if a Param of
+// the same Name already exists in the mctx.Context.
+func MustAdd(ctx mctx.Context, param Param) {
+	param.Name = strings.ToLower(param.Name)
+	param.Path = mctx.Path(ctx)
+
+	cfg := get(ctx)
+	if _, ok := cfg.params[param.Name]; ok {
+		panic(fmt.Sprintf("Context Path:%#v Name:%q already exists", param.Path, param.Name))
 	}
-	p.Path = c.Path
-	c.Params[p.Name] = p
+	cfg.params[param.Name] = param
 }
 
-func (c *Cfg) allParams() []Param {
-	params := make([]Param, 0, len(c.Params))
-	for _, p := range c.Params {
-		params = append(params, p)
-	}
-
-	for _, child := range c.Children {
-		params = append(params, child.allParams()...)
-	}
-	return params
-}
-
-// ParamInt64 returns an *int64 which will be populated once the Cfg is run
-func (c *Cfg) ParamInt64(name string, defaultVal int64, usage string) *int64 {
+// Int64 returns an *int64 which will be populated once Populate is run.
+func Int64(ctx mctx.Context, name string, defaultVal int64, usage string) *int64 {
 	i := defaultVal
-	c.ParamAdd(Param{Name: name, Usage: usage, Into: &i})
+	MustAdd(ctx, Param{Name: name, Usage: usage, Into: &i})
 	return &i
 }
 
-// ParamRequiredInt64 returns an *int64 which will be populated once the Cfg is
-// run, and which must be supplied by a configuration Source
-func (c *Cfg) ParamRequiredInt64(name string, usage string) *int64 {
+// RequiredInt64 returns an *int64 which will be populated once Populate is run,
+// and which must be supplied by a configuration Source.
+func RequiredInt64(ctx mctx.Context, name string, usage string) *int64 {
 	var i int64
-	c.ParamAdd(Param{Name: name, Required: true, Usage: usage, Into: &i})
+	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &i})
 	return &i
 }
 
-// ParamInt returns an *int which will be populated once the Cfg is run
-func (c *Cfg) ParamInt(name string, defaultVal int, usage string) *int {
+// Int returns an *int which will be populated once Populate is run.
+func Int(ctx mctx.Context, name string, defaultVal int, usage string) *int {
 	i := defaultVal
-	c.ParamAdd(Param{Name: name, Usage: usage, Into: &i})
+	MustAdd(ctx, Param{Name: name, Usage: usage, Into: &i})
 	return &i
 }
 
-// ParamRequiredInt returns an *int which will be populated once the Cfg is run,
-// and which must be supplied by a configuration Source
-func (c *Cfg) ParamRequiredInt(name string, usage string) *int {
+// RequiredInt returns an *int which will be populated once Populate is run, and
+// which must be supplied by a configuration Source.
+func RequiredInt(ctx mctx.Context, name string, usage string) *int {
 	var i int
-	c.ParamAdd(Param{Name: name, Required: true, Usage: usage, Into: &i})
+	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &i})
 	return &i
 }
 
-// ParamString returns a *string which will be populated once the Cfg is run
-func (c *Cfg) ParamString(name, defaultVal, usage string) *string {
+// String returns a *string which will be populated once Populate is run.
+func String(ctx mctx.Context, name, defaultVal, usage string) *string {
 	s := defaultVal
-	c.ParamAdd(Param{Name: name, Usage: usage, IsString: true, Into: &s})
+	MustAdd(ctx, Param{Name: name, Usage: usage, IsString: true, Into: &s})
 	return &s
 }
 
-// ParamRequiredString returns a *string which will be populated once the Cfg is
-// run, and which must be supplied by a configuration Source
-func (c *Cfg) ParamRequiredString(name, usage string) *string {
+// RequiredString returns a *string which will be populated once Populate is
+// run, and which must be supplied by a configuration Source.
+func RequiredString(ctx mctx.Context, name, usage string) *string {
 	var s string
-	c.ParamAdd(Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &s})
+	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &s})
 	return &s
 }
 
-// ParamBool returns a *bool which will be populated once the Cfg is run, and
-// which defaults to false if unconfigured
+// Bool returns a *bool which will be populated once Populate is run, and which
+// defaults to false if unconfigured.
 //
 // The default behavior of all Sources is that a boolean parameter will be set
 // to true unless the value is "", 0, or false. In the case of the CLI Source
 // the value will also be true when the parameter is used with no value at all,
 // as would be expected.
-func (c *Cfg) ParamBool(name, usage string) *bool {
+func Bool(ctx mctx.Context, name, usage string) *bool {
 	var b bool
-	c.ParamAdd(Param{Name: name, Usage: usage, IsBool: true, Into: &b})
+	MustAdd(ctx, Param{Name: name, Usage: usage, IsBool: true, Into: &b})
 	return &b
 }
 
-// ParamTS returns an *mtime.TS which will be populated once the Cfg is run
-func (c *Cfg) ParamTS(name string, defaultVal mtime.TS, usage string) *mtime.TS {
+// TS returns an *mtime.TS which will be populated once Populate is run.
+func TS(ctx mctx.Context, name string, defaultVal mtime.TS, usage string) *mtime.TS {
 	t := defaultVal
-	c.ParamAdd(Param{Name: name, Usage: usage, Into: &t})
+	MustAdd(ctx, Param{Name: name, Usage: usage, Into: &t})
 	return &t
 }
 
-// ParamDuration returns an *mtime.Duration which will be populated once the Cfg
-// is run
-func (c *Cfg) ParamDuration(name string, defaultVal mtime.Duration, usage string) *mtime.Duration {
+// RequiredTS returns an *mtime.TS which will be populated once Populate is run,
+// and which must be supplied by a configuration Source.
+func RequiredTS(ctx mctx.Context, name, usage string) *mtime.TS {
+	var t mtime.TS
+	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &t})
+	return &t
+}
+
+// Duration returns an *mtime.Duration which will be populated once
+// Populate is run.
+func Duration(ctx mctx.Context, name string, defaultVal mtime.Duration, usage string) *mtime.Duration {
 	d := defaultVal
-	c.ParamAdd(Param{Name: name, Usage: usage, IsString: true, Into: &d})
+	MustAdd(ctx, Param{Name: name, Usage: usage, IsString: true, Into: &d})
 	return &d
 }
 
-// ParamJSON reads the parameter value as a JSON value and unmarshals it into
-// the given interface{} (which should be a pointer). The receiver (into) is
-// also used to determine the default value.
-func (c *Cfg) ParamJSON(name string, into interface{}, usage string) {
-	c.ParamAdd(Param{Name: name, Usage: usage, Into: into})
+// RequiredDuration returns an *mtime.Duration which will be populated once
+// Populate is run, and which must be supplied by a configuration Source.
+func RequiredDuration(ctx mctx.Context, name string, defaultVal mtime.Duration, usage string) *mtime.Duration {
+	var d mtime.Duration
+	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &d})
+	return &d
 }
 
-// ParamRequiredJSON reads the parameter value as a JSON value and unmarshals it
-// into the given interface{} (which should be a pointer).
-func (c *Cfg) ParamRequiredJSON(name string, into interface{}, usage string) {
-	c.ParamAdd(Param{Name: name, Required: true, Usage: usage, Into: into})
+// JSON reads the parameter value as a JSON value and unmarshals it into the
+// given interface{} (which should be a pointer). The receiver (into) is also
+// used to determine the default value.
+func JSON(ctx mctx.Context, name string, into interface{}, usage string) {
+	MustAdd(ctx, Param{Name: name, Usage: usage, Into: into})
+}
+
+// RequiredJSON reads the parameter value as a JSON value and unmarshals it into
+// the given interface{} (which should be a pointer). The value must be supplied
+// by a configuration Source.
+func RequiredJSON(ctx mctx.Context, name string, into interface{}, usage string) {
+	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: into})
 }
