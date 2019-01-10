@@ -1,6 +1,7 @@
 package mctx
 
 import (
+	"sync"
 	. "testing"
 
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
@@ -76,4 +77,37 @@ func TestMutableValues(t *T) {
 	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, true, 0, fn), 1))
 
 	massert.Fatal(t, massert.All(aa...))
+}
+
+func TestMutableValuesParallel(t *T) {
+	const events = 1000000
+	const workers = 10
+
+	incr := func(v interface{}) interface{} {
+		if v == nil {
+			return 1
+		}
+		return v.(int) + 1
+	}
+
+	ch := make(chan bool, events)
+	for i := 0; i < events; i++ {
+		ch <- true
+	}
+	close(ch)
+
+	ctx := New()
+	wg := new(sync.WaitGroup)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range ch {
+				GetSetMutableValue(ctx, false, 0, incr)
+			}
+		}()
+	}
+
+	wg.Wait()
+	massert.Fatal(t, massert.Equal(events, MutableValue(ctx, 0)))
 }

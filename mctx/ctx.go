@@ -50,6 +50,11 @@ func WithTimeout(parent Context, d time.Duration) (Context, CancelFunc) {
 
 type ctxKey int
 
+type mutVal struct {
+	l sync.RWMutex
+	v interface{}
+}
+
 type ctxState struct {
 	path     []string
 	l        sync.RWMutex
@@ -57,7 +62,7 @@ type ctxState struct {
 	children map[string]Context
 
 	mutL    sync.RWMutex
-	mutVals map[interface{}]interface{}
+	mutVals map[interface{}]*mutVal
 }
 
 func getCtxState(ctx Context) *ctxState {
@@ -147,6 +152,9 @@ func ChildOf(ctx Context, name string) Context {
 	return childCtx
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// code related to mutable values
+
 // MutableValue acts like the Value method, except that it only deals with
 // keys/values set by SetMutableValue.
 func MutableValue(ctx Context, key interface{}) interface{} {
@@ -155,8 +163,12 @@ func MutableValue(ctx Context, key interface{}) interface{} {
 	defer s.mutL.RUnlock()
 	if s.mutVals == nil {
 		return nil
+	} else if mVal, ok := s.mutVals[key]; ok {
+		mVal.l.RLock()
+		defer mVal.l.RUnlock()
+		return mVal.v
 	}
-	return s.mutVals[key]
+	return nil
 }
 
 // GetSetMutableValue is used to interact with a mutable value on the context in
@@ -172,43 +184,47 @@ func MutableValue(ctx Context, key interface{}) interface{} {
 // Children of this context will _not_ inherit any of its mutable values.
 //
 // Within the callback it is fine to call other functions/methods on the
-// Context, except for those related to mutable values (e.g. MutableValue and
-// SetMutableValue).
+// Context, except for those related to mutable values for this same key (e.g.
+// MutableValue and SetMutableValue).
 func GetSetMutableValue(
 	ctx Context, noCallbackIfSet bool,
 	key interface{}, fn func(interface{}) interface{},
 ) interface{} {
 	s := getCtxState(ctx)
 
+	// if noCallbackIfSet, do a fast lookup with MutableValue first.
 	if noCallbackIfSet {
-		s.mutL.RLock()
-		if s.mutVals != nil && s.mutVals[key] != nil {
-			defer s.mutL.RUnlock()
-			return s.mutVals[key]
+		if v := MutableValue(ctx, key); v != nil {
+			return v
 		}
-		s.mutL.RUnlock()
 	}
 
 	s.mutL.Lock()
-	defer s.mutL.Unlock()
-
 	if s.mutVals == nil {
-		s.mutVals = map[interface{}]interface{}{}
+		s.mutVals = map[interface{}]*mutVal{}
 	}
-	val := s.mutVals[key]
+	mVal, ok := s.mutVals[key]
+	if !ok {
+		mVal = new(mutVal)
+		s.mutVals[key] = mVal
+	}
+	s.mutL.Unlock()
+
+	mVal.l.Lock()
+	defer mVal.l.Unlock()
 
 	// It's possible something happened between the first check inside the
 	// read-lock and now, so double check this case. It's still good to have the
 	// read-lock check there, it'll handle 99% of the cases.
-	if noCallbackIfSet && val != nil {
-		return val
+	if noCallbackIfSet && mVal.v != nil {
+		return mVal.v
 	}
 
-	val = fn(val)
-	if val == nil {
-		delete(s.mutVals, key)
-	} else {
-		s.mutVals[key] = val
-	}
-	return val
+	mVal.v = fn(mVal.v)
+
+	// TODO if the new v is nil then key could be deleted out of mutVals. But
+	// doing so would be weird in the case that there's another routine which
+	// has already pulled this same mVal out of mutVals and is waiting on its
+	// mutex.
+	return mVal.v
 }
