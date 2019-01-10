@@ -1,4 +1,5 @@
-// Package mrun TODO
+// Package mrun extends mctx to include event hooks and tracking of the liveness
+// of spawned go-routines.
 package mrun
 
 import (
@@ -35,7 +36,7 @@ func (fe *futureErr) set(err error) {
 type ctxKey int
 
 // Thread spawns a go-routine which executes the given function. When the passed
-// in Context is cancceled the Context within all threads spawned from it will
+// in Context is canceled the Context within all threads spawned from it will
 // be canceled as well.
 //
 // See Wait for accompanying functionality.
