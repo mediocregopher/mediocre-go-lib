@@ -76,6 +76,10 @@ func collectParams(ctx mctx.Context) []Param {
 }
 
 func populate(params []Param, src Source) error {
+	if src == nil {
+		src = SourceMap{}
+	}
+
 	pvs, err := src.Parse(params)
 	if err != nil {
 		return err
@@ -108,6 +112,9 @@ func populate(params []Param, src Source) error {
 
 // Populate uses the Source to populate the values of all Params which were
 // added to the given mctx.Context, and all of its children.
+//
+// Source may be nil to indicate that no configuration is provided. Only default
+// values will be used, and if any paramaters are required this will error.
 func Populate(ctx mctx.Context, src Source) error {
 	return populate(collectParams(ctx), src)
 }
