@@ -4,7 +4,41 @@ package mnet
 
 import (
 	"net"
+
+	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
+
+// ListenerOnStart returns a Listener which will be initialized when the start
+// event is triggered on ctx (see mrun.Start).
+//
+// network defaults to "tcp" if empty. defaultAddr defaults to ":0" if empty,
+// and will be configurable via mcfg.
+func ListenerOnStart(ctx mctx.Context, network, defaultAddr string) net.Listener {
+	if network == "" {
+		network = "tcp"
+	}
+	if defaultAddr == "" {
+		defaultAddr = ":0"
+	}
+	addr := mcfg.String(ctx, "addr", defaultAddr, network+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+
+	var l struct{ net.Listener }
+	mrun.OnStart(ctx, func(mctx.Context) error {
+		var err error
+		if l.Listener, err = net.Listen(network, *addr); err != nil {
+			return err
+		}
+		mlog.From(ctx).Info("listening", mlog.KV{"addr": l.Addr()})
+		return nil
+	})
+
+	return &l
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func mustGetCIDRNetwork(cidr string) *net.IPNet {
 	_, n, err := net.ParseCIDR(cidr)

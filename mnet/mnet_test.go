@@ -1,9 +1,14 @@
 package mnet
 
 import (
+	"fmt"
+	"io/ioutil"
 	"net"
 	. "testing"
 
+	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/mrun"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
@@ -30,4 +35,36 @@ func TestIsReservedIP(t *T) {
 		assertReserved("::ffff:8.8.8.8"),
 		assertReserved("2600:1700:7580:6e80:21c:25ff:fe97:44df"),
 	))
+}
+
+func TestListen(t *T) {
+	ctx := mctx.New()
+	l := ListenerOnStart(ctx, "", "")
+	if err := mcfg.Populate(ctx, nil); err != nil {
+		t.Fatal(err)
+	} else if err := mrun.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	go func() {
+		conn, err := net.Dial("tcp", l.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		} else if _, err = fmt.Fprint(conn, "hello world"); err != nil {
+			t.Fatal(err)
+		}
+		conn.Close()
+	}()
+
+	conn, err := l.Accept()
+	if err != nil {
+		t.Fatal(err)
+	} else if b, err := ioutil.ReadAll(conn); err != nil {
+		t.Fatal(err)
+	} else if string(b) != "hello world" {
+		t.Fatalf("read %q from conn", b)
+	}
+
+	conn.Close()
+	l.Close()
 }
