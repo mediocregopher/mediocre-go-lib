@@ -186,7 +186,7 @@ func (str String) String() string {
 type Message struct {
 	Level
 	Description Stringer
-	KV          KV
+	KVer
 }
 
 func stringSlice(kv KV) [][2]string {
@@ -219,10 +219,12 @@ func DefaultFormat(w io.Writer, msg Message) error {
 		}
 	}
 	write("~ %s -- %s", msg.Level.String(), msg.Description.String())
-	if len(msg.KV) > 0 {
-		write(" --")
-		for _, kve := range stringSlice(msg.KV) {
-			write(" %s=%s", kve[0], kve[1])
+	if msg.KVer != nil {
+		if kv := msg.KV(); len(kv) > 0 {
+			write(" --")
+			for _, kve := range stringSlice(kv) {
+				write(" %s=%s", kve[0], kve[1])
+			}
 		}
 	}
 	write("\n")
@@ -253,6 +255,7 @@ type Logger struct {
 	w        io.Writer
 	h        Handler
 	maxLevel uint
+	kv       KVer
 
 	testMsgWrittenCh chan struct{} // only initialized/used in tests
 }
@@ -301,12 +304,26 @@ func (l *Logger) WithHandler(h Handler) *Logger {
 	return l
 }
 
+// WithKV returns a copy of the Logger which will use the merging of the given
+// KVers as a base KVer for all log messages. If the original Logger already had
+// a base KVer (via a previous WithKV call) then this set will be merged onto
+// that one.
+func (l *Logger) WithKV(kvs ...KVer) *Logger {
+	l = l.clone()
+	l.kv = MergeInto(l.kv, kvs...)
+	return l
+}
+
 // Log can be used to manually log a message of some custom defined Level. kvs
 // will be Merge'd automatically. If the Level is a fatal (Uint() == 0) then
 // calling this will never return, and the process will have os.Exit(1) called.
 func (l *Logger) Log(msg Message) {
 	if l.maxLevel < msg.Level.Uint() {
 		return
+	}
+
+	if l.kv != nil {
+		msg.KVer = MergeInto(l.kv, msg.KVer)
 	}
 
 	if err := l.h(msg); err != nil {
@@ -327,7 +344,7 @@ func mkMsg(lvl Level, descr string, kvs ...KVer) Message {
 	return Message{
 		Level:       lvl,
 		Description: String(descr),
-		KV:          Merge(kvs...).KV(),
+		KVer:        Merge(kvs...),
 	}
 }
 

@@ -101,6 +101,15 @@ func TestLogger(t *T) {
 		assertOut("~ WARN -- BAZ\n"),
 		assertOut("~ ERROR -- buz\n"),
 	))
+
+	l3 := l2.WithKV(KV{"a": 1})
+	l3.Info("foo", KV{"b": 2})
+	l3.Info("bar", KV{"a": 2, "b": 3})
+	massert.Fatal(t, massert.All(
+		assertOut("~ INFO -- FOO -- a=\"1\" b=\"2\"\n"),
+		assertOut("~ INFO -- BAR -- a=\"2\" b=\"3\"\n"),
+	))
+
 }
 
 func TestDefaultFormat(t *T) {
@@ -122,13 +131,13 @@ func TestDefaultFormat(t *T) {
 	msg := Message{Level: InfoLevel, Description: String("this is a test")}
 	massert.Fatal(t, assertFormat("INFO -- this is a test", msg))
 
-	msg.KV = KV{}.KV()
+	msg.KVer = KV{}
 	massert.Fatal(t, assertFormat("INFO -- this is a test", msg))
 
-	msg.KV = KV{"foo": "a"}.KV()
+	msg.KVer = KV{"foo": "a"}
 	massert.Fatal(t, assertFormat("INFO -- this is a test -- foo=\"a\"", msg))
 
-	msg.KV = KV{"foo": "a", "bar": "b"}.KV()
+	msg.KVer = KV{"foo": "a", "bar": "b"}
 	massert.Fatal(t,
 		assertFormat("INFO -- this is a test -- bar=\"b\" foo=\"a\"", msg))
 }
