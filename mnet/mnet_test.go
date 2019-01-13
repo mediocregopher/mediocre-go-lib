@@ -38,7 +38,8 @@ func TestIsReservedIP(t *T) {
 }
 
 func TestMListen(t *T) {
-	ctx := mctx.New()
+	ctx := mctx.ChildOf(mctx.New(), "test")
+
 	l := MListen(ctx, "", "")
 	if err := mcfg.Populate(ctx, nil); err != nil {
 		t.Fatal(err)
