@@ -11,12 +11,13 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-// ListenerOnStart returns a Listener which will be initialized when the start
-// event is triggered on ctx (see mrun.Start).
+// MListen returns a Listener which will be initialized when the start event is
+// triggered on ctx (see mrun.Start), and closed when the stop event is
+// triggered on ctx (see mrun.Stop).
 //
 // network defaults to "tcp" if empty. defaultAddr defaults to ":0" if empty,
 // and will be configurable via mcfg.
-func ListenerOnStart(ctx mctx.Context, network, defaultAddr string) net.Listener {
+func MListen(ctx mctx.Context, network, defaultAddr string) net.Listener {
 	if network == "" {
 		network = "tcp"
 	}
@@ -33,6 +34,12 @@ func ListenerOnStart(ctx mctx.Context, network, defaultAddr string) net.Listener
 		}
 		mlog.From(ctx).Info("listening", mlog.KV{"addr": l.Addr()})
 		return nil
+	})
+
+	// TODO track connections and wait for them to complete before shutting
+	// down?
+	mrun.OnStop(ctx, func(mctx.Context) error {
+		return l.Close()
 	})
 
 	return &l

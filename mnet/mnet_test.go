@@ -37,9 +37,9 @@ func TestIsReservedIP(t *T) {
 	))
 }
 
-func TestListen(t *T) {
+func TestMListen(t *T) {
 	ctx := mctx.New()
-	l := ListenerOnStart(ctx, "", "")
+	l := MListen(ctx, "", "")
 	if err := mcfg.Populate(ctx, nil); err != nil {
 		t.Fatal(err)
 	} else if err := mrun.Start(ctx); err != nil {
@@ -65,6 +65,7 @@ func TestListen(t *T) {
 		t.Fatalf("read %q from conn", b)
 	}
 
-	conn.Close()
-	l.Close()
+	if err := mrun.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
