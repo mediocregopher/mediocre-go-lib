@@ -240,7 +240,7 @@ func DefaultHandler() Handler {
 		defer l.Unlock()
 
 		err := DefaultFormat(bw, msg)
-		if err != nil {
+		if err == nil {
 			err = bw.Flush()
 		}
 		return err
