@@ -142,7 +142,7 @@ func TestThreadWait(t *T) {
 	})
 }
 
-func TestEvent(t *T) {
+func TestHooks(t *T) {
 	ch := make(chan int, 10)
 	ctx := mctx.New()
 	ctxChild := mctx.ChildOf(ctx, "child")
@@ -154,18 +154,18 @@ func TestEvent(t *T) {
 		}
 	}
 
-	OnEvent(ctx, 0, mkHook(0))
-	OnEvent(ctxChild, 0, mkHook(1))
-	OnEvent(ctx, 0, mkHook(2))
+	RegisterHook(ctx, 0, mkHook(0))
+	RegisterHook(ctxChild, 0, mkHook(1))
+	RegisterHook(ctx, 0, mkHook(2))
 
 	bogusErr := errors.New("bogus error")
-	OnEvent(ctxChild, 0, func(mctx.Context) error { return bogusErr })
+	RegisterHook(ctxChild, 0, func(mctx.Context) error { return bogusErr })
 
-	OnEvent(ctx, 0, mkHook(3))
-	OnEvent(ctx, 0, mkHook(4))
+	RegisterHook(ctx, 0, mkHook(3))
+	RegisterHook(ctx, 0, mkHook(4))
 
 	massert.Fatal(t, massert.All(
-		massert.Equal(bogusErr, TriggerEvent(ctx, 0)),
+		massert.Equal(bogusErr, TriggerHooks(ctx, 0)),
 		massert.Equal(0, <-ch),
 		massert.Equal(1, <-ch),
 		massert.Equal(2, <-ch),
@@ -181,7 +181,7 @@ func TestEvent(t *T) {
 	}
 
 	massert.Fatal(t, massert.All(
-		massert.Nil(TriggerEvent(ctx, 0)),
+		massert.Nil(TriggerHooks(ctx, 0)),
 		massert.Equal(3, <-ch),
 		massert.Equal(4, <-ch),
 	))

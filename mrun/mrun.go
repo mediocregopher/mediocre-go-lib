@@ -1,5 +1,5 @@
-// Package mrun extends mctx to include event hooks and tracking of the liveness
-// of spawned go-routines.
+// Package mrun extends mctx to include runtime event hooks and tracking of the
+// liveness of spawned go-routines.
 package mrun
 
 import (
@@ -101,21 +101,22 @@ type ctxEventKeyWrap struct {
 }
 
 // Hook describes a function which can be registered to trigger on an event via
-// the OnEvent function.
+// the RegisterHook function.
 type Hook func(mctx.Context) error
 
-// OnEvent registers a Hook under a typed key. The Hook will be called when
-// TriggerEvent is called with that same key. Multiple Hooks can be registered
+// RegisterHook registers a Hook under a typed key. The Hook will be called when
+// TriggerHooks is called with that same key. Multiple Hooks can be registered
 // for the same key, and will be called sequentially when triggered.
 //
-// OnEvent registers Hooks onto the root of the given Context. Therefore, Hooks
-// will be triggered in the global order they were registered (i.e. if a Hook is
-// registered on a Context, then one registered on a child of that Context, then
-// another on the original Context again, the three Hooks will be triggered in
-// the order: parent, child, parent).
+// RegisterHook registers Hooks onto the root of the given Context. Therefore,
+// Hooks will be triggered in the global order they were registered. For
+// example: if one Hook is registered on a Context, then one is registered on a
+// child of that Context, then another one is registered on the original Context
+// again, the three Hooks will be triggered in the order: parent, child,
+// parent.
 //
-// Hooks will be called with whatever Context is passed into TriggerEvent.
-func OnEvent(ctx mctx.Context, key interface{}, hook Hook) {
+// Hooks will be called with whatever Context is passed into TriggerHooks.
+func RegisterHook(ctx mctx.Context, key interface{}, hook Hook) {
 	ctx = mctx.Root(ctx)
 	mctx.GetSetMutableValue(ctx, false, ctxEventKeyWrap{key}, func(v interface{}) interface{} {
 		hooks, _ := v.([]Hook)
@@ -123,23 +124,17 @@ func OnEvent(ctx mctx.Context, key interface{}, hook Hook) {
 	})
 }
 
-// TriggerEvent causes all Hooks registered with OnEvent under the given key to
-// be called sequentially, using the given Context as their input. The given
-// Context does not need to be the root Context (see OnEvent).
-//
-// If any Hook returns an error no further Hooks will be called and that error
-// will be returned.
-//
-// TriggerEvent causes all Hooks which were called to be de-registered. If an
-// error caused execution to stop prematurely then any Hooks which were not
-// called will remain registered.
-func TriggerEvent(ctx mctx.Context, key interface{}) error {
+func triggerHooks(ctx mctx.Context, key interface{}, next func([]Hook) (Hook, []Hook)) error {
 	rootCtx := mctx.Root(ctx)
 	var err error
 	mctx.GetSetMutableValue(rootCtx, false, ctxEventKeyWrap{key}, func(i interface{}) interface{} {
+		var hook Hook
 		hooks, _ := i.([]Hook)
-		for _, hook := range hooks {
-			hooks = hooks[1:]
+		for {
+			if len(hooks) == 0 {
+				break
+			}
+			hook, hooks = next(hooks)
 
 			// err here is the var outside GetSetMutableValue, we lift it out
 			if err = hook(ctx); err != nil {
@@ -158,6 +153,32 @@ func TriggerEvent(ctx mctx.Context, key interface{}) error {
 	return err
 }
 
+// TriggerHooks causes all Hooks registered with RegisterHook under the given
+// key to be called in the global order they were registered, using the given
+// Context as their input parameter. The given Context does not need to be the
+// root Context (see RegisterHook).
+//
+// If any Hook returns an error no further Hooks will be called and that error
+// will be returned.
+//
+// TriggerHooks causes all Hooks which were called to be de-registered. If an
+// error caused execution to stop prematurely then any Hooks which were not
+// called will remain registered.
+func TriggerHooks(ctx mctx.Context, key interface{}) error {
+	return triggerHooks(ctx, key, func(hooks []Hook) (Hook, []Hook) {
+		return hooks[0], hooks[1:]
+	})
+}
+
+// TriggerHooksReverse is the same as TriggerHooks except that registered Hooks
+// are called in the reverse order in which they were registered.
+func TriggerHooksReverse(ctx mctx.Context, key interface{}) error {
+	return triggerHooks(ctx, key, func(hooks []Hook) (Hook, []Hook) {
+		last := len(hooks) - 1
+		return hooks[last], hooks[:last]
+	})
+}
+
 type builtinEvent int
 
 const (
@@ -166,7 +187,7 @@ const (
 )
 
 // OnStart registers the given Hook to run when Start is called. This is a
-// special case of OnEvent.
+// special case of RegisterHook.
 //
 // As a convention Hooks running on the start event should block only as long as
 // it takes to ensure that whatever is running can do so successfully. For
@@ -175,23 +196,23 @@ const (
 // go-routine to do their actual work. Long-lived tasks should set themselves up
 // to stop on the stop event (see OnStop).
 func OnStart(ctx mctx.Context, hook Hook) {
-	OnEvent(ctx, start, hook)
+	RegisterHook(ctx, start, hook)
 }
 
 // Start runs all Hooks registered using OnStart. This is a special case of
-// TriggerEvent.
+// TriggerHooks.
 func Start(ctx mctx.Context) error {
-	return TriggerEvent(ctx, start)
+	return TriggerHooks(ctx, start)
 }
 
 // OnStop registers the given Hook to run when Stop is called. This is a special
-// case of OnEvent.
+// case of RegisterHook.
 func OnStop(ctx mctx.Context, hook Hook) {
-	OnEvent(ctx, stop, hook)
+	RegisterHook(ctx, stop, hook)
 }
 
-// Stop runs all Hooks registered using OnStop. This is a special case of
-// TriggerEvent.
+// Stop runs all Hooks registered using OnStop in the reverse order in which
+// they were registered. This is a special case of TriggerHooks.
 func Stop(ctx mctx.Context) error {
-	return TriggerEvent(ctx, stop)
+	return TriggerHooksReverse(ctx, stop)
 }
