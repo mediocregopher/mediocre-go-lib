@@ -76,7 +76,7 @@ var (
 // KVer is used to provide context to a log entry in the form of a dynamic set
 // of key/value pairs which can be different for every entry.
 //
-// Each returned map should be modifiable.
+// The returned map is read-only, and may be nil.
 type KVer interface {
 	KV() map[string]interface{}
 }
@@ -94,19 +94,16 @@ type KV map[string]interface{}
 
 // KV implements the KVer method by returning a copy of itself.
 func (kv KV) KV() map[string]interface{} {
-	nkv := make(map[string]interface{}, len(kv))
-	for k, v := range kv {
-		nkv[k] = v
-	}
-	return nkv
+	return map[string]interface{}(kv)
 }
 
 // Set returns a copy of the KV being called on with the given key/val set on
 // it. The original KV is unaffected
 func (kv KV) Set(k string, v interface{}) KV {
-	nkv := kv.KV()
-	nkv[k] = v
-	return nkv
+	kvm := make(map[string]interface{}, len(kv)+1)
+	copyM(kvm, kv.KV())
+	kvm[k] = v
+	return KV(kvm)
 }
 
 // returns a key/value map which should not be written to. saves a map-cloning
@@ -120,16 +117,23 @@ func readOnlyKVM(kver KVer) map[string]interface{} {
 	return kver.KV()
 }
 
+func copyM(dst, src map[string]interface{}) {
+	for k, v := range src {
+		dst[k] = v
+	}
+}
+
 // this may take in any amount of nil values, but should never return nil
 func mergeInto(kv KVer, kvs ...KVer) map[string]interface{} {
-	if kv == nil {
-		kv = KV(nil) // will return empty map when KV is called on it
+	kvm := map[string]interface{}{}
+	if kv != nil {
+		copyM(kvm, kv.KV())
 	}
-	kvm := kv.KV()
 	for _, innerKV := range kvs {
-		for k, v := range readOnlyKVM(innerKV) {
-			kvm[k] = v
+		if innerKV == nil {
+			continue
 		}
+		copyM(kvm, innerKV.KV())
 	}
 	return kvm
 }
@@ -321,9 +325,10 @@ func (l *Logger) WithKV(kvs ...KVer) *Logger {
 	return l
 }
 
-// Log can be used to manually log a message of some custom defined Level. kvs
-// will be Merge'd automatically. If the Level is a fatal (Uint() == 0) then
-// calling this will never return, and the process will have os.Exit(1) called.
+// Log can be used to manually log a message of some custom defined Level.
+//
+// If the Level is a fatal (Uint() == 0) then calling this will never return,
+// and the process will have os.Exit(1) called.
 func (l *Logger) Log(msg Message) {
 	if l.maxLevel < msg.Level.Uint() {
 		return

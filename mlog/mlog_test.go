@@ -21,27 +21,17 @@ func TestTruncate(t *T) {
 func TestKV(t *T) {
 	var kv KV
 	massert.Fatal(t, massert.All(
-		massert.Not(massert.Nil(kv.KV())),
+		massert.Nil(kv.KV()),
 		massert.Len(kv.KV(), 0),
-	))
-
-	// test that the KV method returns a copy
-	kv = KV{"foo": "a"}
-	kvm := kv.KV()
-	kv["bur"] = "b"
-	kvm["bar"] = "bb"
-	massert.Fatal(t, massert.All(
-		massert.Equal(KV{"foo": "a", "bur": "b"}, kv),
-		massert.Equal(map[string]interface{}{"foo": "a", "bar": "bb"}, kvm),
 	))
 
 	// test that the Set method returns a copy
 	kv = KV{"foo": "a"}
-	kvm = kv.Set("bar", "wat")
+	kv2 := kv.Set("bar", "wat")
 	kv["bur"] = "ok"
 	massert.Fatal(t, massert.All(
 		massert.Equal(KV{"foo": "a", "bur": "ok"}, kv),
-		massert.Equal(map[string]interface{}{"foo": "a", "bar": "wat"}, kvm),
+		massert.Equal(KV{"foo": "a", "bar": "wat"}, kv2),
 	))
 }
 
