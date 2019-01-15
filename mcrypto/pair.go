@@ -13,7 +13,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 var (
@@ -58,7 +58,7 @@ func (pk PublicKey) verify(s Signature, r io.Reader) error {
 		return err
 	}
 	if err := rsa.VerifyPSS(&pk.PublicKey, crypto.SHA256, h.Sum(nil), s.sig, nil); err != nil {
-		return mlog.ErrWithKV(ErrInvalidSig, s)
+		return merr.WithValue(ErrInvalidSig, "sig", s, true)
 	}
 	return nil
 }
@@ -88,12 +88,12 @@ func (pk *PublicKey) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, pubKeyV0)
 	if !ok || len(strEnc) <= hex.EncodedLen(8) {
-		return mlog.ErrWithKV(errMalformedPublicKey, mlog.KV{"pubKeyStr": str})
+		return merr.WithValue(errMalformedPublicKey, "pubKeyStr", str, true)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"pubKeyStr": str})
+		return merr.WithValue(err, "pubKeyStr", str, true)
 	}
 
 	pk.E = int(binary.BigEndian.Uint64(b))
@@ -184,17 +184,17 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, privKeyV0)
 	if !ok {
-		return mlog.ErrWithKV(errMalformedPrivateKey, mlog.KV{"privKeyStr": str})
+		return merr.Wrap(errMalformedPrivateKey)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"privKeyStr": str})
+		return merr.Wrap(errMalformedPrivateKey)
 	}
 
 	e, n := binary.Uvarint(b)
 	if n <= 0 {
-		return mlog.ErrWithKV(errMalformedPrivateKey, mlog.KV{"privKeyStr": str})
+		return merr.Wrap(errMalformedPrivateKey)
 	}
 	pk.PublicKey.E = int(e)
 	b = b[n:]
@@ -205,7 +205,7 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 		}
 		l, n := binary.Uvarint(b)
 		if n <= 0 {
-			err = errMalformedPrivateKey
+			err = merr.Wrap(errMalformedPrivateKey)
 		}
 		b = b[n:]
 		i := new(big.Int)
@@ -221,7 +221,7 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 	}
 
 	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"privKeyStr": str})
+		return err
 	}
 	return nil
 }

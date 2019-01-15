@@ -4,7 +4,7 @@ import (
 	. "testing"
 	"time"
 
-	"github.com/ansel1/merry"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +36,7 @@ func TestSignerVerifier(t *T) {
 		if prevStr != "" {
 			assert.NotEqual(t, prevSig.String(), thisSigStr)
 			err := VerifyString(secret, prevSig, thisStr)
-			assert.True(t, merry.Is(err, ErrInvalidSig))
+			assert.True(t, merr.Equal(err, ErrInvalidSig))
 		}
 		prevStr = thisStr
 		prevSig = thisSig

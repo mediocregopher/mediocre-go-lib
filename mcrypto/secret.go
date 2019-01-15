@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 // Secret contains a set of bytes which are inteded to remain secret within some
@@ -76,9 +76,9 @@ func (s Secret) sign(r io.Reader) (Signature, error) {
 func (s Secret) verify(sig Signature, r io.Reader) error {
 	sigB, err := s.signRaw(r, uint8(len(sig.sig)), sig.salt, sig.t)
 	if err != nil {
-		return mlog.ErrWithKV(err, sig)
+		return merr.WithValue(err, "sig", sig, true)
 	} else if !hmac.Equal(sigB, sig.sig) {
-		return mlog.ErrWithKV(ErrInvalidSig, sig)
+		return merr.WithValue(ErrInvalidSig, "sig", sig, true)
 	}
 	return nil
 }

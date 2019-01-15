@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 var errMalformedUUID = errors.New("malformed UUID string")
@@ -68,11 +68,11 @@ func (u *UUID) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, uuidV0)
 	if !ok || len(strEnc) != hex.EncodedLen(16) {
-		return mlog.ErrWithKV(errMalformedUUID, mlog.KV{"uuidStr": str})
+		return merr.WithValue(errMalformedUUID, "uuidStr", str, true)
 	}
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"uuidStr": str})
+		return merr.WithValue(err, "uuidStr", str, true)
 	}
 	u.b = b
 	return nil

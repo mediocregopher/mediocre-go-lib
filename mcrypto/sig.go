@@ -9,7 +9,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 var (
@@ -66,12 +66,12 @@ func (s *Signature) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, sigV0)
 	if !ok || len(strEnc) < hex.EncodedLen(10) {
-		return mlog.ErrWithKV(errMalformedSig, mlog.KV{"sigStr": str})
+		return merr.WithValue(errMalformedSig, "sigStr", str, true)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return mlog.ErrWithKV(err, mlog.KV{"sigStr": str})
+		return merr.WithValue(err, "sigStr", str, true)
 	}
 
 	unixNano, b := int64(binary.BigEndian.Uint64(b[:8])), b[8:]
@@ -81,7 +81,7 @@ func (s *Signature) UnmarshalText(b []byte) error {
 		if err != nil {
 			return nil
 		} else if len(b) < 1+int(b[0]) {
-			err = mlog.ErrWithKV(errMalformedSig, mlog.KV{"sigStr": str})
+			err = merr.WithValue(errMalformedSig, "sigStr", str, true)
 			return nil
 		}
 		out := b[1 : 1+b[0]]

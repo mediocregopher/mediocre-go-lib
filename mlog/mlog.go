@@ -10,7 +10,7 @@
 // Examples:
 //
 //	Info("Something important has occurred")
-//	Error("Could not open file", llog.KV{"filename": filename}, llog.ErrKV(err))
+//	Error("Could not open file", llog.KV{"filename": filename}, merr.KV(err))
 //
 package mlog
 
@@ -22,6 +22,8 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 // Truncate is a helper function to truncate a string to a given size. It will
@@ -339,7 +341,7 @@ func (l *Logger) Log(msg Message) {
 	}
 
 	if err := l.h(msg); err != nil {
-		go l.Error("Logger.Handler returned error", ErrKV(err))
+		go l.Error("Logger.Handler returned error", merr.KV(err))
 		return
 	}
 
