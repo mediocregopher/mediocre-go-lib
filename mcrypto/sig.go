@@ -51,8 +51,8 @@ func (s Signature) String() string {
 }
 
 // KV implements the method for the mlog.KVer interface
-func (s Signature) KV() mlog.KV {
-	return mlog.KV{"sig": s.String()}
+func (s Signature) KV() map[string]interface{} {
+	return map[string]interface{}{"sig": s.String()}
 }
 
 // MarshalText implements the method for the encoding.TextMarshaler interface

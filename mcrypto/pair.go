@@ -73,8 +73,8 @@ func (pk PublicKey) String() string {
 }
 
 // KV implements the method for the mlog.KVer interface
-func (pk PublicKey) KV() mlog.KV {
-	return mlog.KV{"publicKey": pk.String()}
+func (pk PublicKey) KV() map[string]interface{} {
+	return map[string]interface{}{"publicKey": pk.String()}
 }
 
 // MarshalText implements the method for the encoding.TextMarshaler interface
@@ -169,8 +169,8 @@ func (pk PrivateKey) String() string {
 }
 
 // KV implements the method for the mlog.KVer interface
-func (pk PrivateKey) KV() mlog.KV {
-	return mlog.KV{"privateKey": pk.String()}
+func (pk PrivateKey) KV() map[string]interface{} {
+	return map[string]interface{}{"privateKey": pk.String()}
 }
 
 // MarshalText implements the method for the encoding.TextMarshaler interface

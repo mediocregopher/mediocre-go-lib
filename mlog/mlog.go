@@ -76,26 +76,25 @@ var (
 // KVer is used to provide context to a log entry in the form of a dynamic set
 // of key/value pairs which can be different for every entry.
 //
-// Each returned KV should be modifiable.
+// Each returned map should be modifiable.
 type KVer interface {
-	KV() KV
+	KV() map[string]interface{}
 }
 
 // KVerFunc is a function which implements the KVer interface by calling itself.
-type KVerFunc func() KV
+type KVerFunc func() map[string]interface{}
 
 // KV implements the KVer interface by calling the KVerFunc itself.
-func (kvf KVerFunc) KV() KV {
+func (kvf KVerFunc) KV() map[string]interface{} {
 	return kvf()
 }
 
-// KV is a set of key/value pairs which provides context for a log entry by a
-// KVer. KV is itself also a KVer.
+// KV is a KVer which returns a copy of itself when KV is called.
 type KV map[string]interface{}
 
-// KV implements the KVer method by returning a copy of the KV
-func (kv KV) KV() KV {
-	nkv := make(KV, len(kv))
+// KV implements the KVer method by returning a copy of itself.
+func (kv KV) KV() map[string]interface{} {
+	nkv := make(map[string]interface{}, len(kv))
 	for k, v := range kv {
 		nkv[k] = v
 	}
@@ -110,17 +109,25 @@ func (kv KV) Set(k string, v interface{}) KV {
 	return nkv
 }
 
+// returns a key/value map which should not be written to. saves a map-cloning
+// if KVer is a KV
+func readOnlyKVM(kver KVer) map[string]interface{} {
+	if kver == nil {
+		return map[string]interface{}(nil)
+	} else if kv, ok := kver.(KV); ok {
+		return map[string]interface{}(kv)
+	}
+	return kver.KV()
+}
+
 // this may take in any amount of nil values, but should never return nil
-func mergeInto(kv KVer, kvs ...KVer) KV {
+func mergeInto(kv KVer, kvs ...KVer) map[string]interface{} {
 	if kv == nil {
 		kv = KV(nil) // will return empty map when KV is called on it
 	}
 	kvm := kv.KV()
-	for _, kv := range kvs {
-		if kv == nil {
-			continue
-		}
-		for k, v := range kv.KV() {
+	for _, innerKV := range kvs {
+		for k, v := range readOnlyKVM(innerKV) {
 			kvm[k] = v
 		}
 	}
@@ -150,20 +157,20 @@ func MergeInto(kv KVer, kvs ...KVer) KVer {
 	return merger{base: kv, rest: kvs}
 }
 
-func (m merger) KV() KV {
+func (m merger) KV() map[string]interface{} {
 	return mergeInto(m.base, m.rest...)
 }
 
 // Prefix prefixes the all keys returned from the given KVer with the given
 // prefix string.
 func Prefix(kv KVer, prefix string) KVer {
-	return KVerFunc(func() KV {
-		kvv := kv.KV()
-		newKVV := make(KV, len(kvv))
-		for k, v := range kvv {
-			newKVV[prefix+k] = v
+	return KVerFunc(func() map[string]interface{} {
+		kvm := readOnlyKVM(kv)
+		newKVM := make(map[string]interface{}, len(kvm))
+		for k, v := range kvm {
+			newKVM[prefix+k] = v
 		}
-		return newKVV
+		return newKVM
 	})
 }
 

@@ -53,8 +53,8 @@ func MListen(ctx mctx.Context, network, defaultAddr string) net.Listener {
 	return l
 }
 
-func (l *listener) KV() mlog.KV {
-	return mlog.KV{"addr": l.Addr().String()}
+func (l *listener) KV() map[string]interface{} {
+	return map[string]interface{}{"addr": l.Addr().String()}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

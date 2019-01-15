@@ -25,23 +25,23 @@ func TestKV(t *T) {
 		massert.Len(kv.KV(), 0),
 	))
 
-	// test that the KV method returns a new KV instance
+	// test that the KV method returns a copy
 	kv = KV{"foo": "a"}
-	kv2 := kv.KV()
+	kvm := kv.KV()
 	kv["bur"] = "b"
-	kv2["bar"] = "bb"
+	kvm["bar"] = "bb"
 	massert.Fatal(t, massert.All(
 		massert.Equal(KV{"foo": "a", "bur": "b"}, kv),
-		massert.Equal(KV{"foo": "a", "bar": "bb"}, kv2),
+		massert.Equal(map[string]interface{}{"foo": "a", "bar": "bb"}, kvm),
 	))
 
-	// test that the Set method returns a new KV instance
+	// test that the Set method returns a copy
 	kv = KV{"foo": "a"}
-	kv2 = kv.Set("bar", "wat")
+	kvm = kv.Set("bar", "wat")
 	kv["bur"] = "ok"
 	massert.Fatal(t, massert.All(
 		massert.Equal(KV{"foo": "a", "bur": "ok"}, kv),
-		massert.Equal(KV{"foo": "a", "bar": "wat"}, kv2),
+		massert.Equal(map[string]interface{}{"foo": "a", "bar": "wat"}, kvm),
 	))
 }
 
@@ -144,7 +144,7 @@ func TestDefaultFormat(t *T) {
 
 func TestMerge(t *T) {
 	assertMerge := func(exp KV, kvs ...KVer) massert.Assertion {
-		return massert.Equal(exp, Merge(kvs...).KV())
+		return massert.Equal(exp.KV(), Merge(kvs...).KV())
 	}
 
 	massert.Fatal(t, massert.All(
@@ -178,8 +178,8 @@ func TestMerge(t *T) {
 		kv["a"] = "b"
 		massert.Fatal(t, massert.All(
 			massert.Equal(KV{"a": "b"}, kv),
-			massert.Equal(KV{"a": "b"}, kv.KV()),
-			massert.Equal(KV{"a": "b"}, mergedKV.KV()),
+			massert.Equal(map[string]interface{}{"a": "b"}, kv.KV()),
+			massert.Equal(map[string]interface{}{"a": "b"}, mergedKV.KV()),
 		))
 	}
 }
@@ -189,8 +189,8 @@ func TestPrefix(t *T) {
 	prefixKV := Prefix(kv, "aa")
 
 	massert.Fatal(t, massert.All(
-		massert.Equal(kv.KV(), KV{"foo": "bar"}),
-		massert.Equal(prefixKV.KV(), KV{"aafoo": "bar"}),
-		massert.Equal(kv.KV(), KV{"foo": "bar"}),
+		massert.Equal(map[string]interface{}{"foo": "bar"}, kv.KV()),
+		massert.Equal(map[string]interface{}{"aafoo": "bar"}, prefixKV.KV()),
+		massert.Equal(map[string]interface{}{"foo": "bar"}, kv.KV()),
 	))
 }

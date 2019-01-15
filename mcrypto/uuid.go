@@ -53,8 +53,8 @@ func (u UUID) Time() time.Time {
 }
 
 // KV implements the method for the mlog.KVer interface
-func (u UUID) KV() mlog.KV {
-	return mlog.KV{"uuid": u.String()}
+func (u UUID) KV() map[string]interface{} {
+	return map[string]interface{}{"uuid": u.String()}
 }
 
 // MarshalText implements the method for the encoding.TextMarshaler interface
