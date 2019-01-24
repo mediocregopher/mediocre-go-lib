@@ -1,5 +1,11 @@
 // Package merr extends the errors package with features like key-value
 // attributes for errors, embedded stacktraces, and multi-errors.
+//
+// merr functions takes in generic errors of the built-in type. The returned
+// errors are wrapped by a type internal to merr, and appear to also be of the
+// generic error type. This means that equality checking will not work, unless
+// the Base function is used. If any functions are given nil they will also
+// return nil.
 package merr
 
 import (
@@ -39,6 +45,10 @@ type err struct {
 type attrKey string
 
 func wrap(e error, cp bool, skip int) *err {
+	if e == nil {
+		return nil
+	}
+
 	er, ok := e.(*err)
 	if !ok {
 		er := &err{err: e, attr: map[interface{}]val{}}
@@ -130,24 +140,6 @@ func (er *err) Error() string {
 	}
 
 	return sb.String()
-}
-
-// WithValue returns a copy of the original error, automatically wrapping it if
-// the error is not from merr (see Wrap). The returned error has a value set on
-// with for the given key.
-//
-// visible determines whether or not the value is visible in the output of
-// Error.
-func WithValue(e error, k, v interface{}, visible bool) error {
-	er := wrap(e, true, 1)
-	er.attr[k] = val{val: v, visible: visible}
-	return er
-}
-
-// GetValue returns the value embedded in the error for the given key, or nil if
-// the error isn't from this package or doesn't have that key embedded.
-func GetValue(e error, k interface{}) interface{} {
-	return wrap(e, false, -1).attr[k].val
 }
 
 // Base takes in an error and checks if it is merr's internal error type. If it

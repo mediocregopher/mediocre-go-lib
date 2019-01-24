@@ -31,6 +31,7 @@ func TestBase(t *T) {
 	errFoo, errBar := errors.New("foo"), errors.New("bar")
 	erFoo := Wrap(errFoo)
 	massert.Fatal(t, massert.All(
+		massert.Nil(Base(nil)),
 		massert.Equal(errFoo, Base(erFoo)),
 		massert.Equal(errBar, Base(errBar)),
 		massert.Not(massert.Equal(errFoo, erFoo)),

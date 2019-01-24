@@ -8,6 +8,13 @@ import (
 )
 
 func TestKV(t *T) {
+	massert.Fatal(t, massert.All(
+		massert.Nil(WithValue(nil, "foo", "bar", true)),
+		massert.Nil(WithValue(nil, "foo", "bar", false)),
+		massert.Nil(GetValue(nil, "foo")),
+		massert.Len(KV(nil).KV(), 0),
+	))
+
 	er := New("foo")
 	kv := KV(er).KV()
 	massert.Fatal(t, massert.Comment(
