@@ -8,6 +8,7 @@ import (
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
@@ -39,6 +40,7 @@ func TestIsReservedIP(t *T) {
 
 func TestMListen(t *T) {
 	ctx := mctx.ChildOf(mctx.New(), "test")
+	mlog.CtxSet(ctx, mlog.From(ctx).WithMaxLevel(mlog.DebugLevel))
 
 	l := MListen(ctx, "", "")
 	if err := mcfg.Populate(ctx, nil); err != nil {

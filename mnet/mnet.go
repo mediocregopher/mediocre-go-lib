@@ -7,31 +7,33 @@ import (
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-type listener struct {
+// MListener is returned by MListen and simply wraps a net.Listener.
+type MListener struct {
 	net.Listener
 	log *mlog.Logger
 }
 
-// MListen returns a Listener which will be initialized when the start event is
-// triggered on ctx (see mrun.Start), and closed when the stop event is
+// MListen returns an MListener which will be initialized when the start event
+// is triggered on ctx (see mrun.Start), and closed when the stop event is
 // triggered on ctx (see mrun.Stop).
 //
 // network defaults to "tcp" if empty. defaultAddr defaults to ":0" if empty,
 // and will be configurable via mcfg.
-func MListen(ctx mctx.Context, network, defaultAddr string) net.Listener {
+func MListen(ctx mctx.Context, network, defaultAddr string) *MListener {
 	if network == "" {
 		network = "tcp"
 	}
 	if defaultAddr == "" {
 		defaultAddr = ":0"
 	}
-	addr := mcfg.String(ctx, "addr", defaultAddr, network+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+	addr := mcfg.String(ctx, "listen-addr", defaultAddr, network+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
 
-	l := new(listener)
+	l := new(MListener)
 	l.log = mlog.From(ctx).WithKV(l)
 
 	mrun.OnStart(ctx, func(mctx.Context) error {
@@ -53,7 +55,28 @@ func MListen(ctx mctx.Context, network, defaultAddr string) net.Listener {
 	return l
 }
 
-func (l *listener) KV() map[string]interface{} {
+// Accept wraps a call to Accept on the underlying net.Listener, providing debug
+// logging.
+func (l *MListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return conn, err
+	}
+	l.log.Debug("connection accepted", mlog.KV{"remoteAddr": conn.RemoteAddr()})
+	return conn, nil
+}
+
+// Close wraps a call to Close on the underlying net.Listener, providing debug
+// logging.
+func (l *MListener) Close() error {
+	l.log.Debug("listener closing")
+	err := l.Listener.Close()
+	l.log.Debug("listener closed", merr.KV(err))
+	return err
+}
+
+// KV implements the mlog.KVer interface.
+func (l *MListener) KV() map[string]interface{} {
 	return map[string]interface{}{"addr": l.Addr().String()}
 }
 
