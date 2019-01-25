@@ -9,8 +9,9 @@
 //
 // Examples:
 //
-//	Info("Something important has occurred")
-//	Error("Could not open file", llog.KV{"filename": filename}, merr.KV(err))
+//	log := mlog.NewLogger()
+//	log.Info("Something important has occurred")
+//	log.Error("Could not open file", mlog.KV{"filename": filename}, merr.KV(err))
 //
 package mlog
 
