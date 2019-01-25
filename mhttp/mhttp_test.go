@@ -1,11 +1,50 @@
 package mhttp
 
 import (
+	"bytes"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
 	. "testing"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/mrun"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
+
+func TestMListenAndServe(t *T) {
+	ctx := mctx.ChildOf(mctx.New(), "test")
+	mlog.CtxSet(ctx, mlog.From(ctx).WithMaxLevel(mlog.DebugLevel))
+
+	h := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		io.Copy(rw, r.Body)
+	})
+
+	srv := MListenAndServe(ctx, h)
+	if err := mrun.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	body := bytes.NewBufferString("HELLO")
+	resp, err := http.Post("http://"+srv.Addr, "text/plain", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	} else if string(respBody) != "HELLO" {
+		t.Fatalf("unexpected respBody: %q", respBody)
+	}
+
+	if err := mrun.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestAddXForwardedFor(t *T) {
 	assertXFF := func(prev []string, ipStr, expected string) massert.Assertion {

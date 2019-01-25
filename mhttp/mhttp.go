@@ -10,35 +10,47 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/mediocregopher/mediocre-go-lib/m"
-	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mnet"
+	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-// CfgServer initializes and returns an *http.Server which will initialize on
-// the Start hook. This also sets up config params for configuring the address
-// being listened on.
-func CfgServer(cfg *mcfg.Cfg, h http.Handler) *http.Server {
-	cfg = cfg.Child("http")
-	addr := cfg.ParamString("addr", ":0", "Address to listen on. Default is any open port")
+// MListenAndServe returns an http.Server which will be initialized and have
+// ListenAndServe called on it (asynchronously) when the start event is
+// triggered on ctx (see mrun.Start). The Server will have Shutdown called on it
+// when the stop event is triggered on ctx (see mrun.Stop).
+//
+// This function automatically handles setting up configuration parameters via
+// mcfg. The default listen address is ":0".
+func MListenAndServe(ctx mctx.Context, h http.Handler) *http.Server {
+	ctx = mctx.ChildOf(ctx, "http")
+	listener := mnet.MListen(ctx, "tcp", "")
+	listener.NoCloseOnStop = true // http.Server.Shutdown will do this
+	logger := mlog.From(ctx).WithKV(listener)
 
 	srv := http.Server{Handler: h}
-	cfg.Start.Then(func(ctx context.Context) error {
-		srv.Addr = *addr
-		kv := mlog.KV{"addr": *addr}
-		log := m.Log(cfg, kv)
-		log.Info("listening")
-		go func() {
-			err := srv.ListenAndServe()
-			// TODO the listening log should happen here, somehow, now that we
-			// know the actual address being listened on
-			log.Fatal("http server fataled", mlog.ErrKV(err))
-		}()
+	mrun.OnStart(ctx, func(mctx.Context) error {
+		srv.Addr = listener.Addr().String()
+		mrun.Thread(ctx, func() error {
+			if err := srv.Serve(listener); err != http.ErrServerClosed {
+				logger.Error("error serving listener", merr.KV(err))
+				return err
+			}
+			return nil
+		})
 		return nil
 	})
 
-	// TODO shutdown logic
+	mrun.OnStop(ctx, func(innerCtx mctx.Context) error {
+		logger.Info("shutting down server")
+		if err := srv.Shutdown(context.Context(innerCtx)); err != nil {
+			return err
+		}
+		return mrun.Wait(ctx, innerCtx.Done())
+	})
+
 	return &srv
 }
 
