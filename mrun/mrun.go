@@ -40,7 +40,7 @@ type ctxKey int
 // be canceled as well.
 //
 // See Wait for accompanying functionality.
-func Thread(ctx mctx.Context, fn func(mctx.Context) error) {
+func Thread(ctx mctx.Context, fn func() error) {
 	futErr := newFutureErr()
 	mctx.GetSetMutableValue(ctx, false, ctxKey(0), func(i interface{}) interface{} {
 		futErrs, ok := i.([]*futureErr)
@@ -51,7 +51,7 @@ func Thread(ctx mctx.Context, fn func(mctx.Context) error) {
 	})
 
 	go func() {
-		futErr.set(fn(ctx))
+		futErr.set(fn())
 	}()
 }
 

@@ -29,7 +29,7 @@ func TestThreadWait(t *T) {
 		t.Run("noBlock", func(t *T) {
 			t.Run("noErr", func(t *T) {
 				ctx := mctx.New()
-				Thread(ctx, func(mctx.Context) error { return nil })
+				Thread(ctx, func() error { return nil })
 				if err := Wait(ctx, nil); err != nil {
 					t.Fatal(err)
 				}
@@ -37,7 +37,7 @@ func TestThreadWait(t *T) {
 
 			t.Run("err", func(t *T) {
 				ctx := mctx.New()
-				Thread(ctx, func(mctx.Context) error { return testErr })
+				Thread(ctx, func() error { return testErr })
 				if err := Wait(ctx, nil); err != testErr {
 					t.Fatalf("should have got test error, got: %v", err)
 				}
@@ -47,7 +47,7 @@ func TestThreadWait(t *T) {
 		t.Run("block", func(t *T) {
 			t.Run("noErr", func(t *T) {
 				ctx := mctx.New()
-				Thread(ctx, func(mctx.Context) error {
+				Thread(ctx, func() error {
 					time.Sleep(1 * time.Second)
 					return nil
 				})
@@ -58,7 +58,7 @@ func TestThreadWait(t *T) {
 
 			t.Run("err", func(t *T) {
 				ctx := mctx.New()
-				Thread(ctx, func(mctx.Context) error {
+				Thread(ctx, func() error {
 					time.Sleep(1 * time.Second)
 					return testErr
 				})
@@ -69,7 +69,7 @@ func TestThreadWait(t *T) {
 
 			t.Run("canceled", func(t *T) {
 				ctx := mctx.New()
-				Thread(ctx, func(mctx.Context) error {
+				Thread(ctx, func() error {
 					time.Sleep(5 * time.Second)
 					return testErr
 				})
@@ -89,7 +89,7 @@ func TestThreadWait(t *T) {
 		t.Run("noBlock", func(t *T) {
 			t.Run("noErr", func(t *T) {
 				ctx, childCtx := ctxWithChild()
-				Thread(childCtx, func(mctx.Context) error { return nil })
+				Thread(childCtx, func() error { return nil })
 				if err := Wait(ctx, nil); err != nil {
 					t.Fatal(err)
 				}
@@ -97,7 +97,7 @@ func TestThreadWait(t *T) {
 
 			t.Run("err", func(t *T) {
 				ctx, childCtx := ctxWithChild()
-				Thread(childCtx, func(mctx.Context) error { return testErr })
+				Thread(childCtx, func() error { return testErr })
 				if err := Wait(ctx, nil); err != testErr {
 					t.Fatalf("should have got test error, got: %v", err)
 				}
@@ -107,7 +107,7 @@ func TestThreadWait(t *T) {
 		t.Run("block", func(t *T) {
 			t.Run("noErr", func(t *T) {
 				ctx, childCtx := ctxWithChild()
-				Thread(childCtx, func(mctx.Context) error {
+				Thread(childCtx, func() error {
 					time.Sleep(1 * time.Second)
 					return nil
 				})
@@ -118,7 +118,7 @@ func TestThreadWait(t *T) {
 
 			t.Run("err", func(t *T) {
 				ctx, childCtx := ctxWithChild()
-				Thread(childCtx, func(mctx.Context) error {
+				Thread(childCtx, func() error {
 					time.Sleep(1 * time.Second)
 					return testErr
 				})
@@ -129,7 +129,7 @@ func TestThreadWait(t *T) {
 
 			t.Run("canceled", func(t *T) {
 				ctx, childCtx := ctxWithChild()
-				Thread(childCtx, func(mctx.Context) error {
+				Thread(childCtx, func() error {
 					time.Sleep(5 * time.Second)
 					return testErr
 				})
