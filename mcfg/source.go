@@ -44,6 +44,7 @@ func (ss Sources) Parse(params []Param) ([]ParamValue, error) {
 // variables.
 type SourceMap map[string]string
 
+// Parse implements the method for the Source interface.
 func (m SourceMap) Parse(params []Param) ([]ParamValue, error) {
 	pvs := make([]ParamValue, 0, len(m))
 	for _, p := range params {

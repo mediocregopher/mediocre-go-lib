@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 // SourceCLI is a Source which will parse configuration from the CLI.
@@ -86,7 +88,8 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 				break
 			}
 			if !pvOk {
-				return nil, fmt.Errorf("unexpected config parameter %q", arg)
+				err := merr.New("unexpected config parameter")
+				return nil, merr.WithValue(err, "param", arg, true)
 			}
 		}
 
@@ -114,7 +117,8 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 		pvStrValOk = false
 	}
 	if pvOk && !pvStrValOk {
-		return nil, fmt.Errorf("param %q expected a value", key)
+		err := merr.New("param expected a value")
+		return nil, merr.WithValue(err, "param", key, true)
 	}
 	return pvs, nil
 }
@@ -140,6 +144,9 @@ func (cli SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
 	}
 
 	sort.Slice(pA, func(i, j int) bool {
+		if pA[i].Required != pA[j].Required {
+			return pA[i].Required
+		}
 		return pA[i].arg < pA[j].arg
 	})
 
@@ -161,6 +168,8 @@ func (cli SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
 		fmt.Fprintf(w, "\n%s", p.arg)
 		if p.IsBool {
 			fmt.Fprintf(w, " (Flag)")
+		} else if p.Required {
+			fmt.Fprintf(w, " (Required)")
 		} else if defVal := fmtDefaultVal(p.Into); defVal != "" {
 			fmt.Fprintf(w, " (Default: %s)", defVal)
 		}

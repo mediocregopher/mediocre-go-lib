@@ -18,7 +18,8 @@ func TestSourceCLIHelp(t *T) {
 	Int(ctx, "foo", 5, "Test int param")
 	Bool(ctx, "bar", "Test bool param")
 	String(ctx, "baz", "baz", "Test string param")
-	String(ctx, "baz2", "", "")
+	RequiredString(ctx, "baz2", "")
+	RequiredString(ctx, "baz3", "")
 	src := SourceCLI{}
 
 	buf := new(bytes.Buffer)
@@ -27,13 +28,15 @@ func TestSourceCLIHelp(t *T) {
 	SourceCLI{}.printHelp(buf, pM)
 
 	exp := `
+--baz2 (Required)
+
+--baz3 (Required)
+
 --bar (Flag)
 	Test bool param
 
 --baz (Default: "baz")
 	Test string param
-
---baz2
 
 --foo (Default: 5)
 	Test int param

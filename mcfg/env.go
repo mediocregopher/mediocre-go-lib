@@ -1,9 +1,10 @@
 package mcfg
 
 import (
-	"fmt"
 	"os"
 	"strings"
+
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 // SourceEnv is a Source which will parse configuration from the process
@@ -56,7 +57,8 @@ func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 	for _, kv := range kvs {
 		split := strings.SplitN(kv, "=", 2)
 		if len(split) != 2 {
-			return nil, fmt.Errorf("malformed environment kv %q", kv)
+			err := merr.New("malformed environment key/value pair")
+			return nil, merr.WithValue(err, "kv", kv, true)
 		}
 		k, v := split[0], split[1]
 		if p, ok := pM[k]; ok {

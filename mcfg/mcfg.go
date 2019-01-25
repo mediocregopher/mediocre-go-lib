@@ -4,10 +4,10 @@ package mcfg
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
 // TODO Sources:
@@ -97,7 +97,8 @@ func populate(params []Param, src Source) error {
 		if !param.Required {
 			continue
 		} else if _, ok := pvM[param.hash()]; !ok {
-			return fmt.Errorf("param %q is required", param.fullName())
+			err := merr.New("required parameter is not set")
+			return merr.WithValue(err, "param", param.fullName(), true)
 		}
 	}
 
