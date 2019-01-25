@@ -168,8 +168,8 @@ func (m merger) KV() map[string]interface{} {
 	return mergeInto(m.base, m.rest...)
 }
 
-// Prefix prefixes the all keys returned from the given KVer with the given
-// prefix string.
+// Prefix prefixes all keys returned from the given KVer with the given prefix
+// string.
 func Prefix(kv KVer, prefix string) KVer {
 	return KVerFunc(func() map[string]interface{} {
 		kvm := readOnlyKVM(kv)
@@ -223,7 +223,7 @@ func stringSlice(kv KV) [][2]string {
 // Handler if necessary.
 type Handler func(msg Message) error
 
-// DefaultFormat formats and writs the Message to the given Writer using mlog's
+// DefaultFormat formats and writes the Message to the given Writer using mlog's
 // default format.
 func DefaultFormat(w io.Writer, msg Message) error {
 	var err error
