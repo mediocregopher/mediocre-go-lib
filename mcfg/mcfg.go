@@ -112,7 +112,9 @@ func populate(params []Param, src Source) error {
 }
 
 // Populate uses the Source to populate the values of all Params which were
-// added to the given mctx.Context, and all of its children.
+// added to the given mctx.Context, and all of its children. Populate may be
+// called multiple times with the same mctx.Context, each time will only affect
+// the values of the Params which were provided by the respective Source.
 //
 // Source may be nil to indicate that no configuration is provided. Only default
 // values will be used, and if any paramaters are required this will error.

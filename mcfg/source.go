@@ -12,9 +12,13 @@ type ParamValue struct {
 }
 
 // Source parses ParamValues out of a particular configuration source, given a
-// sorted set of possible Params to parse. The returned []ParamValue may contain
-// duplicates of the same Param's value. in which case the later value takes
-// precedence.
+// sorted set of possible Params to parse.
+//
+// Source should not return ParamValues which were not explicitly set to a value
+// by the configuration source.
+//
+// The returned []ParamValue may contain duplicates of the same Param's value.
+// in which case the later value takes precedence.
 type Source interface {
 	Parse([]Param) ([]ParamValue, error)
 }
