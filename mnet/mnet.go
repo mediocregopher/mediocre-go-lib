@@ -16,6 +16,10 @@ import (
 type MListener struct {
 	net.Listener
 	log *mlog.Logger
+
+	// If set to true before mrun's stop event is run, the stop event will not
+	// cause the MListener to be closed.
+	NoCloseOnStop bool
 }
 
 // MListen returns an MListener which will be initialized when the start event
@@ -48,6 +52,9 @@ func MListen(ctx mctx.Context, network, defaultAddr string) *MListener {
 	// TODO track connections and wait for them to complete before shutting
 	// down?
 	mrun.OnStop(ctx, func(mctx.Context) error {
+		if l.NoCloseOnStop {
+			return nil
+		}
 		l.log.Info("stopping listener")
 		return l.Close()
 	})
