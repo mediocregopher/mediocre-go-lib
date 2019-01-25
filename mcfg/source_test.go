@@ -109,7 +109,7 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 	ctxP = get(thisCtx).params[p.name] // get it back out to get any added fields
 
 	if !p.unset {
-		pv := ParamValue{Param: ctxP}
+		pv := ParamValue{Name: ctxP.Name, Path: ctxP.Path}
 		if p.isBool {
 			pv.Value = json.RawMessage("true")
 		} else {
@@ -159,17 +159,17 @@ func TestSources(t *T) {
 	))
 }
 
-func TestSourceMap(t *T) {
+func TestSourceParamValues(t *T) {
 	ctx := mctx.New()
 	a := RequiredInt(ctx, "a", "")
 	foo := mctx.ChildOf(ctx, "foo")
 	b := RequiredString(foo, "b", "")
 	c := Bool(foo, "c", "")
 
-	err := Populate(ctx, SourceMap{
-		"a":     "4",
-		"foo-b": "bbb",
-		"foo-c": "1",
+	err := Populate(ctx, ParamValues{
+		{Name: "a", Value: json.RawMessage(`4`)},
+		{Path: []string{"foo"}, Name: "b", Value: json.RawMessage(`"bbb"`)},
+		{Path: []string{"foo"}, Name: "c", Value: json.RawMessage("true")},
 	})
 	massert.Fatal(t, massert.All(
 		massert.Nil(err),

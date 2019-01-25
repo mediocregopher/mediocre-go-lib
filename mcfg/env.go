@@ -57,13 +57,13 @@ func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 	for _, kv := range kvs {
 		split := strings.SplitN(kv, "=", 2)
 		if len(split) != 2 {
-			err := merr.New("malformed environment key/value pair")
-			return nil, merr.WithValue(err, "kv", kv, true)
+			return nil, merr.New("malformed environment key/value pair", "kv", kv)
 		}
 		k, v := split[0], split[1]
 		if p, ok := pM[k]; ok {
 			pvs = append(pvs, ParamValue{
-				Param: p,
+				Name:  p.Name,
+				Path:  p.Path,
 				Value: p.fuzzyParse(v),
 			})
 		}

@@ -3,7 +3,10 @@
 package mcfg
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
@@ -75,9 +78,31 @@ func collectParams(ctx mctx.Context) []Param {
 	return params
 }
 
+func paramHash(path []string, name string) string {
+	h := md5.New()
+	for _, pathEl := range path {
+		fmt.Fprintf(h, "pathEl:%q\n", pathEl)
+	}
+	fmt.Fprintf(h, "name:%q\n", name)
+	hStr := hex.EncodeToString(h.Sum(nil))
+	// we add the displayName to it to make debugging easier
+	return paramFullName(path, name) + "/" + hStr
+}
+
 func populate(params []Param, src Source) error {
 	if src == nil {
-		src = SourceMap{}
+		src = ParamValues(nil)
+	}
+
+	// map Params to their hash, so we can match them to their ParamValues
+	// later. There should not be any duplicates here.
+	pM := map[string]Param{}
+	for _, p := range params {
+		hash := paramHash(p.Path, p.Name)
+		if _, ok := pM[hash]; ok {
+			panic("duplicate Param: " + paramFullName(p.Path, p.Name))
+		}
+		pM[hash] = p
 	}
 
 	pvs, err := src.Parse(params)
@@ -86,24 +111,31 @@ func populate(params []Param, src Source) error {
 	}
 
 	// dedupe the ParamValues based on their hashes, with the last ParamValue
-	// taking precedence
+	// taking precedence. Also filter out those with no corresponding Param.
 	pvM := map[string]ParamValue{}
 	for _, pv := range pvs {
-		pvM[pv.hash()] = pv
+		hash := paramHash(pv.Path, pv.Name)
+		if _, ok := pM[hash]; !ok {
+			continue
+		}
+		pvM[hash] = pv
 	}
 
 	// check for required params
-	for _, param := range params {
-		if !param.Required {
+	for hash, p := range pM {
+		if !p.Required {
 			continue
-		} else if _, ok := pvM[param.hash()]; !ok {
-			err := merr.New("required parameter is not set")
-			return merr.WithValue(err, "param", param.fullName(), true)
+		} else if _, ok := pvM[hash]; !ok {
+			return merr.New("required parameter is not set",
+				"param", paramFullName(p.Path, p.Name))
 		}
 	}
 
-	for _, pv := range pvM {
-		if err := json.Unmarshal(pv.Value, pv.Into); err != nil {
+	// do the actual populating
+	for hash, pv := range pvM {
+		// at this point, all ParamValues in pvM have a corresponding pM Param
+		p := pM[hash]
+		if err := json.Unmarshal(pv.Value, p.Into); err != nil {
 			return err
 		}
 	}

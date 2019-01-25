@@ -1,8 +1,6 @@
 package mcfg
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -49,6 +47,10 @@ type Param struct {
 	Path []string
 }
 
+func paramFullName(path []string, name string) string {
+	return strings.Join(append(path, name), "-")
+}
+
 func (p Param) fuzzyParse(v string) json.RawMessage {
 	if p.IsBool {
 		if v == "" || v == "0" || v == "false" {
@@ -61,21 +63,6 @@ func (p Param) fuzzyParse(v string) json.RawMessage {
 	}
 
 	return json.RawMessage(v)
-}
-
-func (p Param) fullName() string {
-	return strings.Join(append(p.Path, p.Name), "-")
-}
-
-func (p Param) hash() string {
-	h := md5.New()
-	for _, path := range p.Path {
-		fmt.Fprintf(h, "pathEl:%q\n", path)
-	}
-	fmt.Fprintf(h, "name:%q\n", p.Name)
-	hStr := hex.EncodeToString(h.Sum(nil))
-	// we add the displayName to it to make debugging easier
-	return p.fullName() + "/" + hStr
 }
 
 // MustAdd adds the given Param to the mctx.Context. It will panic if a Param of

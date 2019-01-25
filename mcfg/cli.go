@@ -58,7 +58,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 	pvs := make([]ParamValue, 0, len(args))
 	var (
 		key        string
-		pv         ParamValue
+		p          Param
 		pvOk       bool
 		pvStrVal   string
 		pvStrValOk bool
@@ -72,7 +72,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 			os.Stdout.Sync()
 			os.Exit(1)
 		} else {
-			for key, pv.Param = range pM {
+			for key, p = range pM {
 				if arg == key {
 					pvOk = true
 					break
@@ -88,8 +88,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 				break
 			}
 			if !pvOk {
-				err := merr.New("unexpected config parameter")
-				return nil, merr.WithValue(err, "param", arg, true)
+				return nil, merr.New("unexpected config parameter", "param", arg)
 			}
 		}
 
@@ -97,7 +96,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 
 		// As a special case for CLI, if a boolean has no value set it means it
 		// is true.
-		if pv.IsBool && !pvStrValOk {
+		if p.IsBool && !pvStrValOk {
 			pvStrVal = "true"
 			pvStrValOk = true
 		} else if !pvStrValOk {
@@ -107,18 +106,20 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 			continue
 		}
 
-		pv.Value = pv.Param.fuzzyParse(pvStrVal)
+		pvs = append(pvs, ParamValue{
+			Name:  p.Name,
+			Path:  p.Path,
+			Value: p.fuzzyParse(pvStrVal),
+		})
 
-		pvs = append(pvs, pv)
 		key = ""
-		pv = ParamValue{}
+		p = Param{}
 		pvOk = false
 		pvStrVal = ""
 		pvStrValOk = false
 	}
 	if pvOk && !pvStrValOk {
-		err := merr.New("param expected a value")
-		return nil, merr.WithValue(err, "param", key, true)
+		return nil, merr.New("param expected a value", "param", key)
 	}
 	return pvs, nil
 }

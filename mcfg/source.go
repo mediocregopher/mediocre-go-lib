@@ -7,7 +7,8 @@ import (
 // ParamValue describes a value for a parameter which has been parsed by a
 // Source.
 type ParamValue struct {
-	Param
+	Name  string
+	Path  []string
 	Value json.RawMessage
 }
 
@@ -18,9 +19,20 @@ type ParamValue struct {
 // by the configuration source.
 //
 // The returned []ParamValue may contain duplicates of the same Param's value.
-// in which case the later value takes precedence.
+// in which case the later value takes precedence. It may also contain
+// ParamValues which do not correspond to any of the passed in Params. These
+// will be ignored in Populate.
 type Source interface {
 	Parse([]Param) ([]ParamValue, error)
+}
+
+// ParamValues is simply a slice of ParamValue elements, which implements Parse
+// by always returning itself as-is.
+type ParamValues []ParamValue
+
+// Parse implements the method for the Source interface.
+func (pvs ParamValues) Parse([]Param) ([]ParamValue, error) {
+	return pvs, nil
 }
 
 // Sources combines together multiple Source instances into one. It will call
@@ -37,27 +49,6 @@ func (ss Sources) Parse(params []Param) ([]ParamValue, error) {
 			return nil, err
 		}
 		pvs = append(pvs, innerPVs...)
-	}
-	return pvs, nil
-}
-
-// SourceMap implements the Source interface by mapping parameter names to
-// values for them. The names are comprised of the path and name of a Param
-// joined by "-" characters, i.e. `strings.Join(append(param.Path, param.Name),
-// "-")`.  Values will be parsed in the same way that SourceEnv parses its
-// variables.
-type SourceMap map[string]string
-
-// Parse implements the method for the Source interface.
-func (m SourceMap) Parse(params []Param) ([]ParamValue, error) {
-	pvs := make([]ParamValue, 0, len(m))
-	for _, p := range params {
-		if v, ok := m[p.fullName()]; ok {
-			pvs = append(pvs, ParamValue{
-				Param: p,
-				Value: p.fuzzyParse(v),
-			})
-		}
 	}
 	return pvs, nil
 }
