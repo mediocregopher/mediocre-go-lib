@@ -15,12 +15,13 @@ func TestKV(t *T) {
 		massert.Len(KV(nil).KV(), 0),
 	))
 
-	er := New("foo")
+	er := New("foo", "bar", "baz")
 	kv := KV(er).KV()
 	massert.Fatal(t, massert.Comment(
 		massert.All(
-			massert.Len(kv, 2),
+			massert.Len(kv, 3),
 			massert.Equal("foo", kv["err"]),
+			massert.Equal("baz", kv["bar"]),
 			massert.Equal(true,
 				strings.HasPrefix(kv["errSrc"].(string), "merr/kv_test.go:")),
 		),
@@ -36,8 +37,9 @@ func TestKV(t *T) {
 	kv = KV(er).KV()
 	massert.Fatal(t, massert.Comment(
 		massert.All(
-			massert.Len(kv, 3),
+			massert.Len(kv, 4),
 			massert.Equal("foo", kv["err"]),
+			massert.Equal("baz", kv["bar"]),
 			massert.Equal(true,
 				strings.HasPrefix(kv["errSrc"].(string), "merr/kv_test.go:")),
 			massert.Equal("1", kv["k"]),
@@ -49,8 +51,9 @@ func TestKV(t *T) {
 	kv = KV(er).KV()
 	massert.Fatal(t, massert.Comment(
 		massert.All(
-			massert.Len(kv, 4),
+			massert.Len(kv, 5),
 			massert.Equal("foo", kv["err"]),
+			massert.Equal("baz", kv["bar"]),
 			massert.Equal(true,
 				strings.HasPrefix(kv["errSrc"].(string), "merr/kv_test.go:")),
 			massert.Equal("1", kv["merr.A(k)"]),
@@ -63,8 +66,9 @@ func TestKV(t *T) {
 	kv = KV(er).KV()
 	massert.Fatal(t, massert.Comment(
 		massert.All(
-			massert.Len(kv, 5),
+			massert.Len(kv, 6),
 			massert.Equal("foo", kv["err"]),
+			massert.Equal("baz", kv["bar"]),
 			massert.Equal(true,
 				strings.HasPrefix(kv["errSrc"].(string), "merr/kv_test.go:")),
 			massert.Equal("1", kv["merr.A(k)"]),

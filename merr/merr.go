@@ -83,13 +83,25 @@ func Wrap(e error) error {
 // New returns a new error with the given string as its error string. New
 // automatically wraps the error in merr's inner type, which embeds information
 // like the stack trace.
-func New(str string) error {
-	return wrap(errors.New(str), false, 1)
-}
-
-// Errorf is like New, but allows for formatting of the string.
-func Errorf(str string, args ...interface{}) error {
-	return wrap(fmt.Errorf(str, args...), false, 1)
+//
+// For convenience, visible key/values may be passed into New at this point. For
+// example, the following two are equivalent:
+//
+//	merr.WithValue(merr.New("foo"), "bar", "baz", true)
+//	merr.New("foo", "bar", "baz")
+//
+func New(str string, kvs ...interface{}) error {
+	if len(kvs)%2 != 0 {
+		panic("key passed in without corresponding value")
+	}
+	err := wrap(errors.New(str), false, 1)
+	for i := 0; i < len(kvs); i += 2 {
+		err.attr[kvs[i]] = val{
+			visible: true,
+			val:     kvs[i+1],
+		}
+	}
+	return err
 }
 
 func (er *err) visibleAttrs() [][2]string {
