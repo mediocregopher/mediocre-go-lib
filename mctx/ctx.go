@@ -152,6 +152,24 @@ func ChildOf(ctx Context, name string) Context {
 	return childCtx
 }
 
+// BreadthFirstVisit visits this Context and all of its children, and their
+// children, in a breadth-first order. If the callback returns false then the
+// function returns without visiting any more Contexts.
+//
+// The exact order of visitation is non-deterministic.
+func BreadthFirstVisit(ctx Context, callback func(Context) bool) {
+	queue := []Context{ctx}
+	for len(queue) > 0 {
+		if !callback(queue[0]) {
+			return
+		}
+		for _, child := range Children(queue[0]) {
+			queue = append(queue, child)
+		}
+		queue = queue[1:]
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // code related to mutable values
 

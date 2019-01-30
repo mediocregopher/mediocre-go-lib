@@ -54,6 +54,44 @@ func TestInheritance(t *T) {
 	))
 }
 
+func TestBreadFirstVisit(t *T) {
+	ctx := New()
+	ctx1 := ChildOf(ctx, "1")
+	ctx1a := ChildOf(ctx1, "a")
+	ctx1b := ChildOf(ctx1, "b")
+	ctx2 := ChildOf(ctx, "2")
+
+	{
+		got := make([]Context, 0, 5)
+		BreadthFirstVisit(ctx, func(ctx Context) bool {
+			got = append(got, ctx)
+			return true
+		})
+		// since children are stored in a map the exact order is non-deterministic
+		massert.Fatal(t, massert.Any(
+			massert.Equal([]Context{ctx, ctx1, ctx2, ctx1a, ctx1b}, got),
+			massert.Equal([]Context{ctx, ctx1, ctx2, ctx1b, ctx1a}, got),
+			massert.Equal([]Context{ctx, ctx2, ctx1, ctx1a, ctx1b}, got),
+			massert.Equal([]Context{ctx, ctx2, ctx1, ctx1b, ctx1a}, got),
+		))
+	}
+
+	{
+		got := make([]Context, 0, 3)
+		BreadthFirstVisit(ctx, func(ctx Context) bool {
+			if len(Path(ctx)) > 1 {
+				return false
+			}
+			got = append(got, ctx)
+			return true
+		})
+		massert.Fatal(t, massert.Any(
+			massert.Equal([]Context{ctx, ctx1, ctx2}, got),
+			massert.Equal([]Context{ctx, ctx2, ctx1}, got),
+		))
+	}
+}
+
 func TestMutableValues(t *T) {
 	fn := func(v interface{}) interface{} {
 		if v == nil {
