@@ -38,7 +38,8 @@ func MListen(ctx mctx.Context, network, defaultAddr string) *MListener {
 	addr := mcfg.String(ctx, "listen-addr", defaultAddr, network+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
 
 	l := new(MListener)
-	l.log = mlog.From(ctx).WithKV(l)
+	l.log = mlog.From(ctx)
+	l.log.SetKV(l)
 
 	mrun.OnStart(ctx, func(mctx.Context) error {
 		var err error

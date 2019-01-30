@@ -15,8 +15,11 @@ import (
 )
 
 func TestMListenAndServe(t *T) {
+	// TODO mtest.NewCtx
 	ctx := mctx.ChildOf(mctx.New(), "test")
-	mlog.CtxSet(ctx, mlog.From(ctx).WithMaxLevel(mlog.DebugLevel))
+	logger := mlog.From(ctx)
+	logger.SetMaxLevel(mlog.DebugLevel)
+	mlog.CtxSet(ctx, logger)
 
 	h := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		io.Copy(rw, r.Body)

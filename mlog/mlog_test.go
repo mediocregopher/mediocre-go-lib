@@ -41,7 +41,8 @@ func TestLogger(t *T) {
 		return DefaultFormat(buf, msg)
 	}
 
-	l := NewLogger().WithHandler(h)
+	l := NewLogger()
+	l.SetHandler(h)
 	l.testMsgWrittenCh = make(chan struct{}, 10)
 
 	assertOut := func(expected string) massert.Assertion {
@@ -68,7 +69,7 @@ func TestLogger(t *T) {
 		assertOut("~ ERROR -- buz\n"),
 	))
 
-	l = l.WithMaxLevel(WarnLevel)
+	l.SetMaxLevel(WarnLevel)
 	l.Debug("foo")
 	l.Info("bar")
 	l.Warn("baz")
@@ -78,8 +79,9 @@ func TestLogger(t *T) {
 		assertOut("~ ERROR -- buz -- a=\"b\"\n"),
 	))
 
-	l2 := l.WithMaxLevel(InfoLevel)
-	l2 = l2.WithHandler(func(msg Message) error {
+	l2 := l.Clone()
+	l2.SetMaxLevel(InfoLevel)
+	l2.SetHandler(func(msg Message) error {
 		msg.Description = String(strings.ToUpper(msg.Description.String()))
 		return h(msg)
 	})
@@ -92,7 +94,8 @@ func TestLogger(t *T) {
 		assertOut("~ ERROR -- buz\n"),
 	))
 
-	l3 := l2.WithKV(KV{"a": 1})
+	l3 := l2.Clone()
+	l3.SetKV(KV{"a": 1})
 	l3.Info("foo", KV{"b": 2})
 	l3.Info("bar", KV{"a": 2, "b": 3})
 	massert.Fatal(t, massert.All(

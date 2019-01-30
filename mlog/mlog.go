@@ -264,9 +264,10 @@ func DefaultHandler() Handler {
 }
 
 // Logger directs Messages to an internal Handler and provides convenient
-// methods for creating and modifying its own behavior.
+// methods for creating and modifying its own behavior. All methods are
+// thread-safe.
 type Logger struct {
-	w        io.Writer
+	l        *sync.RWMutex
 	h        Handler
 	maxLevel uint
 	kv       KVer
@@ -278,54 +279,50 @@ type Logger struct {
 // to the DefaultHandler.
 func NewLogger() *Logger {
 	return &Logger{
+		l:        new(sync.RWMutex),
 		h:        DefaultHandler(),
 		maxLevel: InfoLevel.Uint(),
 	}
 }
 
-// Handler returns the Handler currently in use by the Logger.
-func (l *Logger) Handler() Handler {
-	return l.h
-}
-
-func (l *Logger) clone() *Logger {
+// Clone returns an identical instance of the Logger which can be modified
+// independently of the original.
+func (l *Logger) Clone() *Logger {
 	l2 := *l
+	l2.l = new(sync.RWMutex)
 	return &l2
 }
 
-// WithMaxLevelUint returns a copy of the Logger which will not log any messages
-// with a higher Level.Uint value than the one given. The returned Logger is
-// identical in all other aspects.
-func (l *Logger) WithMaxLevelUint(i uint) *Logger {
-	l = l.clone()
-	l.maxLevel = i
-	return l
+// SetMaxLevel sets the Logger to not log any messages with a higher Level.Uint
+// value than of the one given.
+func (l *Logger) SetMaxLevel(lvl Level) {
+	l.l.Lock()
+	defer l.l.Unlock()
+	l.maxLevel = lvl.Uint()
 }
 
-// WithMaxLevel returns a copy of the Logger which will not log any messages
-// with a higher Level.Uint value than of the Level given. The returned Logger
-// is identical in all other aspects.
-func (l *Logger) WithMaxLevel(lvl Level) *Logger {
-	return l.WithMaxLevelUint(lvl.Uint())
-}
-
-// WithHandler returns a copy of the Logger which will use the given Handler in
-// order to process messages. The returned Logger is identical in all other
-// aspects.
-func (l *Logger) WithHandler(h Handler) *Logger {
-	l = l.clone()
+// SetHandler sets the Logger to use the given Handler in order to process
+// Messages.
+func (l *Logger) SetHandler(h Handler) {
+	l.l.Lock()
+	defer l.l.Unlock()
 	l.h = h
-	return l
 }
 
-// WithKV returns a copy of the Logger which will use the merging of the given
-// KVers as a base KVer for all log messages. If the original Logger already had
-// a base KVer (via a previous WithKV call) then this set will be merged onto
-// that one.
-func (l *Logger) WithKV(kvs ...KVer) *Logger {
-	l = l.clone()
+// Handler returns the Handler currently in use by the Logger.
+func (l *Logger) Handler() Handler {
+	l.l.RLock()
+	defer l.l.RUnlock()
+	return l.h
+}
+
+// SetKV sets the Logger to use the merging of the given KVers as a base KVer
+// for all Messages. If the Logger already had a base KVer (via a previous SetKV
+// call) then this set will be merged onto that one.
+func (l *Logger) SetKV(kvs ...KVer) {
+	l.l.Lock()
+	defer l.l.Unlock()
 	l.kv = MergeInto(l.kv, kvs...)
-	return l
 }
 
 // Log can be used to manually log a message of some custom defined Level.
@@ -333,6 +330,9 @@ func (l *Logger) WithKV(kvs ...KVer) *Logger {
 // If the Level is a fatal (Uint() == 0) then calling this will never return,
 // and the process will have os.Exit(1) called.
 func (l *Logger) Log(msg Message) {
+	l.l.RLock()
+	defer l.l.RUnlock()
+
 	if l.maxLevel < msg.Level.Uint() {
 		return
 	}

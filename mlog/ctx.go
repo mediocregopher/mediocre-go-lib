@@ -21,6 +21,24 @@ func CtxSet(ctx mctx.Context, l *Logger) {
 	})
 }
 
+// CtxSetAll traverses the given Context's children, breadth-first. It calls the
+// callback for each Context which has a Logger set on it, replacing that Logger
+// with the returned one.
+//
+// This is useful, for example, when changing the log level of all Loggers in an
+// app.
+func CtxSetAll(ctx mctx.Context, callback func(mctx.Context, *Logger) *Logger) {
+	mctx.BreadthFirstVisit(ctx, func(ctx mctx.Context) bool {
+		mctx.GetSetMutableValue(ctx, false, ctxKey(0), func(i interface{}) interface{} {
+			if i == nil {
+				return nil
+			}
+			return callback(ctx, i.(*Logger))
+		})
+		return true
+	})
+}
+
 type ctxPathStringer struct {
 	str     Stringer
 	pathStr string
@@ -39,39 +57,31 @@ func (cp ctxPathStringer) String() string {
 // Context parent's Logger. If the parent hasn't had From called on it its
 // parent will be queried instead, and so on.
 func From(ctx mctx.Context) *Logger {
-	var from func(mctx.Context) *Logger
-	from = func(ctx mctx.Context) *Logger {
-		return mctx.GetSetMutableValue(ctx, true, ctxKey(0), func(interface{}) interface{} {
+	return mctx.GetSetMutableValue(ctx, true, ctxKey(0), func(interface{}) interface{} {
+		ctxPath := mctx.Path(ctx)
+		if len(ctxPath) == 0 {
+			// we're at the root node and it doesn't have a Logger set, use
+			// the default
+			return NewLogger()
+		}
 
-			ctxPath := mctx.Path(ctx)
-			if len(ctxPath) == 0 {
-				// we're at the root node and it doesn't have a Logger set, use
-				// the default
-				return NewLogger()
-			}
+		// set up child's logger
+		pathStr := "/" + path.Join(ctxPath...)
 
-			// set up child's logger
-			pathStr := "/"
-			if len(ctxPath) > 0 {
-				pathStr += path.Join(ctxPath...)
-			}
-
-			parentL := from(mctx.Parent(ctx))
-			prevH := parentL.Handler()
-			return parentL.WithHandler(func(msg Message) error {
-				// if the Description is already a ctxPathStringer it can be
-				// assumed this Message was passed in from a child Logger.
-				if _, ok := msg.Description.(ctxPathStringer); !ok {
-					msg.Description = ctxPathStringer{
-						str:     msg.Description,
-						pathStr: pathStr,
-					}
+		parentL := From(mctx.Parent(ctx))
+		parentH := parentL.Handler()
+		thisL := parentL.Clone()
+		thisL.SetHandler(func(msg Message) error {
+			// if the Description is already a ctxPathStringer it can be
+			// assumed this Message was passed in from a child Logger.
+			if _, ok := msg.Description.(ctxPathStringer); !ok {
+				msg.Description = ctxPathStringer{
+					str:     msg.Description,
+					pathStr: pathStr,
 				}
-				return prevH(msg)
-			})
-
-		}).(*Logger)
-	}
-
-	return from(ctx)
+			}
+			return parentH(msg)
+		})
+		return thisL
+	}).(*Logger)
 }

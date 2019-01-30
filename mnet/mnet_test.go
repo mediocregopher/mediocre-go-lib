@@ -39,8 +39,11 @@ func TestIsReservedIP(t *T) {
 }
 
 func TestMListen(t *T) {
+	// TODO mtest.NewCtx
 	ctx := mctx.ChildOf(mctx.New(), "test")
-	mlog.CtxSet(ctx, mlog.From(ctx).WithMaxLevel(mlog.DebugLevel))
+	logger := mlog.From(ctx)
+	logger.SetMaxLevel(mlog.DebugLevel)
+	mlog.CtxSet(ctx, logger)
 
 	l := MListen(ctx, "", "")
 	if err := mcfg.Populate(ctx, nil); err != nil {

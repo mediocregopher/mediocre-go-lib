@@ -60,7 +60,9 @@ func main() {
 	})
 
 	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authLogger := logger.WithKV(mlog.CtxKV(r.Context()))
+		// TODO mlog.FromHTTP?
+		authLogger := logger.Clone()
+		authLogger.SetKV(mlog.CtxKV(r.Context()))
 
 		unauthorized := func() {
 			w.Header().Add("WWW-Authenticate", "Basic")

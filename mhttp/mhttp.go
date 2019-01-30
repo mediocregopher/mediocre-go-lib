@@ -28,7 +28,9 @@ func MListenAndServe(ctx mctx.Context, h http.Handler) *http.Server {
 	ctx = mctx.ChildOf(ctx, "http")
 	listener := mnet.MListen(ctx, "tcp", "")
 	listener.NoCloseOnStop = true // http.Server.Shutdown will do this
-	logger := mlog.From(ctx).WithKV(listener)
+
+	logger := mlog.From(ctx)
+	logger.SetKV(listener)
 
 	srv := http.Server{Handler: h}
 	mrun.OnStart(ctx, func(mctx.Context) error {
