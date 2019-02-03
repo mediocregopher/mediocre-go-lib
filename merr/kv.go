@@ -101,3 +101,20 @@ func KV(e error) KVer {
 
 	return KVer{kvm}
 }
+
+type kvKey string
+
+// WithKV embeds key/value pairs into an error, just like WithValue, but it does
+// so via one or more passed in maps
+func WithKV(e error, kvMaps ...map[string]interface{}) error {
+	if e == nil {
+		return nil
+	}
+	er := wrap(e, true, 1)
+	for _, kvMap := range kvMaps {
+		for k, v := range kvMap {
+			er.attr[kvKey(k)] = val{val: v, visible: true}
+		}
+	}
+	return er
+}

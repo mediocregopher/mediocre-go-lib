@@ -77,4 +77,22 @@ func TestKV(t *T) {
 		),
 		"kv: %#v", kv,
 	))
+
+	er = WithKV(er, map[string]interface{}{"D": 4, "k": 5})
+	kv = KV(er).KV()
+	massert.Fatal(t, massert.Comment(
+		massert.All(
+			massert.Len(kv, 8),
+			massert.Equal("foo", kv["err"]),
+			massert.Equal("baz", kv["bar"]),
+			massert.Equal(true,
+				strings.HasPrefix(kv["errSrc"].(string), "merr/kv_test.go:")),
+			massert.Equal("1", kv["merr.A(k)"]),
+			massert.Equal("2", kv["merr.B(k)"]),
+			massert.Equal("3", kv["merr.C(k)"]),
+			massert.Equal(4, kv["D"]),
+			massert.Equal(5, kv["merr.kvKey(k)"]),
+		),
+		"kv: %#v", kv,
+	))
 }
