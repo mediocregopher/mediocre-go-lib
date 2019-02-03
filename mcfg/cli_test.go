@@ -15,8 +15,8 @@ import (
 
 func TestSourceCLIHelp(t *T) {
 	ctx := mctx.New()
-	Int(ctx, "foo", 5, "Test int param")
-	Bool(ctx, "bar", "Test bool param")
+	Int(ctx, "foo", 5, "Test int param  ") // trailing space should be trimmed
+	Bool(ctx, "bar", "Test bool param.")
 	String(ctx, "baz", "baz", "Test string param")
 	RequiredString(ctx, "baz2", "")
 	RequiredString(ctx, "baz3", "")
@@ -33,13 +33,13 @@ func TestSourceCLIHelp(t *T) {
 --baz3 (Required)
 
 --bar (Flag)
-	Test bool param
+	Test bool param.
 
 --baz (Default: "baz")
-	Test string param
+	Test string param.
 
 --foo (Default: 5)
-	Test int param
+	Test int param.
 
 `
 	assert.Equal(t, exp, buf.String())

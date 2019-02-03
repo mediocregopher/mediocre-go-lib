@@ -175,8 +175,13 @@ func (cli SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
 			fmt.Fprintf(w, " (Default: %s)", defVal)
 		}
 		fmt.Fprintf(w, "\n")
-		if p.Usage != "" {
-			fmt.Fprintln(w, "\t"+p.Usage)
+		if usage := p.Usage; usage != "" {
+			// make all usages end with a period, because I say so
+			usage = strings.TrimSpace(usage)
+			if !strings.HasSuffix(usage, ".") {
+				usage += "."
+			}
+			fmt.Fprintln(w, "\t"+usage)
 		}
 	}
 	fmt.Fprintf(w, "\n")
