@@ -24,11 +24,33 @@ func CfgSource() mcfg.Source {
 	}
 }
 
-// TODO Create a function, `NewService() mctx.Context` which preloads the
-// context with log-level param. Will one day also add debug server. Problem
-// comes because mlog isn't quite designed right and setting log-level from
-// config won't propagate changes to child contexts which have already called
-// mlog.From.
+// NewServiceCtx returns a Context which should be used as the root Context when
+// creating long running services, such as an RPC service or database.
+//
+// The returned Context will automatically handle setting up global
+// configuration parameters like "log-level", as well as an http endpoint where
+// debug information about the running process can be accessed.
+//
+// TODO set up the debug endpoint.
+func NewServiceCtx() mctx.Context {
+	ctx := mctx.New()
+
+	// set up log level handling
+	logLevelStr := mcfg.String(ctx, "log-level", "info", "Maximum log level which will be printed.")
+	mrun.OnStart(ctx, func(mctx.Context) error {
+		logLevel := mlog.LevelFromString(*logLevelStr)
+		if logLevel == nil {
+			return merr.New("invalid log level", "log-level", *logLevelStr)
+		}
+		mlog.CtxSetAll(ctx, func(_ mctx.Context, logger *mlog.Logger) *mlog.Logger {
+			logger.SetMaxLevel(logLevel)
+			return logger
+		})
+		return nil
+	})
+
+	return ctx
+}
 
 // Run performs the work of populating configuration parameters, triggering the
 // start event, waiting for an interrupt, and then triggering the stop event.

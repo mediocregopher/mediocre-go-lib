@@ -29,7 +29,7 @@ import (
 )
 
 func main() {
-	ctx := mctx.New()
+	ctx := m.NewServiceCtx()
 	logger := mlog.From(ctx)
 	cookieName := mcfg.String(ctx, "cookie-name", "_totp_proxy", "String to use as the name for cookies")
 	cookieTimeout := mcfg.Duration(ctx, "cookie-timeout", mtime.Duration{1 * time.Hour}, "Timeout for cookies")
