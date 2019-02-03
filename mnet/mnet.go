@@ -4,6 +4,7 @@ package mnet
 
 import (
 	"net"
+	"strings"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
@@ -35,7 +36,7 @@ func MListen(ctx mctx.Context, network, defaultAddr string) *MListener {
 	if defaultAddr == "" {
 		defaultAddr = ":0"
 	}
-	addr := mcfg.String(ctx, "listen-addr", defaultAddr, network+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+	addr := mcfg.String(ctx, "listen-addr", defaultAddr, strings.ToUpper(network)+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
 
 	l := new(MListener)
 	l.log = mlog.From(ctx)
