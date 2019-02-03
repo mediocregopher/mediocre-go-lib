@@ -6,10 +6,7 @@ import (
 	"net"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mcfg"
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
-	"github.com/mediocregopher/mediocre-go-lib/mrun"
+	"github.com/mediocregopher/mediocre-go-lib/mtest"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
@@ -39,39 +36,26 @@ func TestIsReservedIP(t *T) {
 }
 
 func TestMListen(t *T) {
-	// TODO mtest.NewCtx
-	ctx := mctx.ChildOf(mctx.New(), "test")
-	logger := mlog.From(ctx)
-	logger.SetMaxLevel(mlog.DebugLevel)
-	mlog.CtxSet(ctx, logger)
-
+	ctx := mtest.NewCtx()
 	l := MListen(ctx, "", "")
-	if err := mcfg.Populate(ctx, nil); err != nil {
-		t.Fatal(err)
-	} else if err := mrun.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
+	mtest.Run(ctx, t, func() {
+		go func() {
+			conn, err := net.Dial("tcp", l.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			} else if _, err = fmt.Fprint(conn, "hello world"); err != nil {
+				t.Fatal(err)
+			}
+			conn.Close()
+		}()
 
-	go func() {
-		conn, err := net.Dial("tcp", l.Addr().String())
+		conn, err := l.Accept()
 		if err != nil {
 			t.Fatal(err)
-		} else if _, err = fmt.Fprint(conn, "hello world"); err != nil {
+		} else if b, err := ioutil.ReadAll(conn); err != nil {
 			t.Fatal(err)
+		} else if string(b) != "hello world" {
+			t.Fatalf("read %q from conn", b)
 		}
-		conn.Close()
-	}()
-
-	conn, err := l.Accept()
-	if err != nil {
-		t.Fatal(err)
-	} else if b, err := ioutil.ReadAll(conn); err != nil {
-		t.Fatal(err)
-	} else if string(b) != "hello world" {
-		t.Fatalf("read %q from conn", b)
-	}
-
-	if err := mrun.Stop(ctx); err != nil {
-		t.Fatal(err)
-	}
+	})
 }

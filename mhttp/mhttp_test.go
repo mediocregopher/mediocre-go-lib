@@ -8,45 +8,32 @@ import (
 	"net/http/httptest"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
-	"github.com/mediocregopher/mediocre-go-lib/mrun"
+	"github.com/mediocregopher/mediocre-go-lib/mtest"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
 func TestMListenAndServe(t *T) {
-	// TODO mtest.NewCtx
-	ctx := mctx.ChildOf(mctx.New(), "test")
-	logger := mlog.From(ctx)
-	logger.SetMaxLevel(mlog.DebugLevel)
-	mlog.CtxSet(ctx, logger)
+	ctx := mtest.NewCtx()
 
-	h := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	srv := MListenAndServe(ctx, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		io.Copy(rw, r.Body)
+	}))
+
+	mtest.Run(ctx, t, func() {
+		body := bytes.NewBufferString("HELLO")
+		resp, err := http.Post("http://"+srv.Addr, "text/plain", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		} else if string(respBody) != "HELLO" {
+			t.Fatalf("unexpected respBody: %q", respBody)
+		}
 	})
-
-	srv := MListenAndServe(ctx, h)
-	if err := mrun.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	body := bytes.NewBufferString("HELLO")
-	resp, err := http.Post("http://"+srv.Addr, "text/plain", body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	} else if string(respBody) != "HELLO" {
-		t.Fatalf("unexpected respBody: %q", respBody)
-	}
-
-	if err := mrun.Stop(ctx); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestAddXForwardedFor(t *T) {
