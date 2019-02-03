@@ -3,17 +3,12 @@
 package mdb
 
 import (
-	"context"
-
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
+	"github.com/mediocregopher/mediocre-go-lib/mrun"
 	"google.golang.org/api/option"
 )
-
-// DefaultGCEProject can be set before any of the Cfg* functions are called for
-// GCE services, and will be used as the default value for the "project"
-// configuration parameter for each service.
-var DefaultGCEProject string
 
 // GCE wraps configuration parameters commonly used for interacting with GCE
 // services.
@@ -22,14 +17,24 @@ type GCE struct {
 	CredFile string
 }
 
-// CfgGCE configures and returns a GCE instance which will be usable once Run is
-// called on the passed in Cfg instance.
-func CfgGCE(cfg *mcfg.Cfg) *GCE {
-	proj := cfg.ParamString("project", DefaultGCEProject, "name of GCE project")
-	credFile := cfg.ParamString("cred-file", "", "path to GCE credientials json file, if any")
+// MGCE returns a GCE instance which will be initialized and configured when the
+// start event is triggered on ctx (see mrun.Start). defaultProject is used as
+// the default value for the mcfg parameter this function creates.
+func MGCE(ctx mctx.Context, defaultProject string) *GCE {
+	ctx = mctx.ChildOf(ctx, "gce")
+	credFile := mcfg.String(ctx, "cred-file", "", "Path to GCE credientials JSON file, if any")
+
+	var project *string
+	const projectUsage = "Name of GCE project to use"
+	if defaultProject == "" {
+		project = mcfg.RequiredString(ctx, "project", projectUsage)
+	} else {
+		project = mcfg.String(ctx, "project", defaultProject, projectUsage)
+	}
+
 	var gce GCE
-	cfg.Start.Then(func(ctx context.Context) error {
-		gce.Project = *proj
+	mrun.OnStart(ctx, func(mctx.Context) error {
+		gce.Project = *project
 		gce.CredFile = *credFile
 		return nil
 	})
@@ -46,9 +51,9 @@ func (gce *GCE) ClientOptions() []option.ClientOption {
 	return opts
 }
 
-// KV implements the mlog.KVer interface
-func (gce *GCE) KV() mlog.KV {
+// KV implements the mlog.KVer interface.
+func (gce *GCE) KV() map[string]interface{} {
 	return mlog.KV{
-		"project": gce.Project,
+		"gceProject": gce.Project,
 	}
 }
