@@ -22,6 +22,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/mediocregopher/mediocre-go-lib/merr"
@@ -73,6 +74,26 @@ var (
 	ErrorLevel Level = level{s: "ERROR", i: 10}
 	FatalLevel Level = level{s: "FATAL", i: 0}
 )
+
+// LevelFromString takes a string describing one of the pre-defined Levels (e.g.
+// "debug" or "INFO") and returns the corresponding Level instance, or nil if
+// the string doesn't describe any of the predefined Levels.
+func LevelFromString(s string) Level {
+	switch strings.TrimSpace(strings.ToUpper(s)) {
+	case "DEBUG":
+		return DebugLevel
+	case "INFO":
+		return InfoLevel
+	case "WARN":
+		return WarnLevel
+	case "ERROR":
+		return ErrorLevel
+	case "FATAL":
+		return FatalLevel
+	default:
+		return nil
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
