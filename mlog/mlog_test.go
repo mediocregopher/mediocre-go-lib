@@ -2,6 +2,7 @@ package mlog
 
 import (
 	"bytes"
+	"context"
 	"regexp"
 	"strings"
 	. "testing"
@@ -36,6 +37,7 @@ func TestKV(t *T) {
 }
 
 func TestLogger(t *T) {
+	ctx := context.Background()
 	buf := new(bytes.Buffer)
 	h := func(msg Message) error {
 		return DefaultFormat(buf, msg)
@@ -59,10 +61,10 @@ func TestLogger(t *T) {
 	}
 
 	// Default max level should be INFO
-	l.Debug("foo")
-	l.Info("bar")
-	l.Warn("baz")
-	l.Error("buz")
+	l.Debug(ctx, "foo")
+	l.Info(ctx, "bar")
+	l.Warn(ctx, "baz")
+	l.Error(ctx, "buz")
 	massert.Fatal(t, massert.All(
 		assertOut("~ INFO -- bar\n"),
 		assertOut("~ WARN -- baz\n"),
@@ -70,10 +72,10 @@ func TestLogger(t *T) {
 	))
 
 	l.SetMaxLevel(WarnLevel)
-	l.Debug("foo")
-	l.Info("bar")
-	l.Warn("baz")
-	l.Error("buz", KV{"a": "b"})
+	l.Debug(ctx, "foo")
+	l.Info(ctx, "bar")
+	l.Warn(ctx, "baz")
+	l.Error(ctx, "buz", KV{"a": "b"})
 	massert.Fatal(t, massert.All(
 		assertOut("~ WARN -- baz\n"),
 		assertOut("~ ERROR -- buz -- a=\"b\"\n"),
@@ -82,12 +84,12 @@ func TestLogger(t *T) {
 	l2 := l.Clone()
 	l2.SetMaxLevel(InfoLevel)
 	l2.SetHandler(func(msg Message) error {
-		msg.Description = String(strings.ToUpper(msg.Description.String()))
+		msg.Description = strings.ToUpper(msg.Description)
 		return h(msg)
 	})
-	l2.Info("bar")
-	l2.Warn("baz")
-	l.Error("buz")
+	l2.Info(ctx, "bar")
+	l2.Warn(ctx, "baz")
+	l.Error(ctx, "buz")
 	massert.Fatal(t, massert.All(
 		assertOut("~ INFO -- BAR\n"),
 		assertOut("~ WARN -- BAZ\n"),
@@ -96,8 +98,8 @@ func TestLogger(t *T) {
 
 	l3 := l2.Clone()
 	l3.SetKV(KV{"a": 1})
-	l3.Info("foo", KV{"b": 2})
-	l3.Info("bar", KV{"a": 2, "b": 3})
+	l3.Info(ctx, "foo", KV{"b": 2})
+	l3.Info(ctx, "bar", KV{"a": 2, "b": 3})
 	massert.Fatal(t, massert.All(
 		assertOut("~ INFO -- FOO -- a=\"1\" b=\"2\"\n"),
 		assertOut("~ INFO -- BAR -- a=\"2\" b=\"3\"\n"),
@@ -121,7 +123,11 @@ func TestDefaultFormat(t *T) {
 		)
 	}
 
-	msg := Message{Level: InfoLevel, Description: String("this is a test")}
+	msg := Message{
+		Context:     context.Background(),
+		Level:       InfoLevel,
+		Description: "this is a test",
+	}
 	massert.Fatal(t, assertFormat("INFO -- this is a test", msg))
 
 	msg.KVer = KV{}

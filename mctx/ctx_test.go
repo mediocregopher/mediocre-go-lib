@@ -1,18 +1,22 @@
 package mctx
 
 import (
-	"sync"
+	"context"
 	. "testing"
 
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
 func TestInheritance(t *T) {
-	ctx := New()
-	ctx1 := ChildOf(ctx, "1")
-	ctx1a := ChildOf(ctx1, "a")
-	ctx1b := ChildOf(ctx1, "b")
-	ctx2 := ChildOf(ctx, "2")
+	ctx := context.Background()
+	ctx1 := NewChild(ctx, "1")
+	ctx1a := NewChild(ctx1, "a")
+	ctx1b := NewChild(ctx1, "b")
+	ctx1 = WithChild(ctx1, ctx1a)
+	ctx1 = WithChild(ctx1, ctx1b)
+	ctx2 := NewChild(ctx, "2")
+	ctx = WithChild(ctx, ctx1)
+	ctx = WithChild(ctx, ctx2)
 
 	massert.Fatal(t, massert.All(
 		massert.Len(Path(ctx), 0),
@@ -23,129 +27,130 @@ func TestInheritance(t *T) {
 	))
 
 	massert.Fatal(t, massert.All(
-		massert.Equal(
-			map[string]Context{"1": ctx1, "2": ctx2},
-			Children(ctx),
-		),
-		massert.Equal(
-			map[string]Context{"a": ctx1a, "b": ctx1b},
-			Children(ctx1),
-		),
-		massert.Equal(
-			map[string]Context{},
-			Children(ctx2),
-		),
-	))
-
-	massert.Fatal(t, massert.All(
-		massert.Nil(Parent(ctx)),
-		massert.Equal(Parent(ctx1), ctx),
-		massert.Equal(Parent(ctx1a), ctx1),
-		massert.Equal(Parent(ctx1b), ctx1),
-		massert.Equal(Parent(ctx2), ctx),
-	))
-
-	massert.Fatal(t, massert.All(
-		massert.Equal(Root(ctx), ctx),
-		massert.Equal(Root(ctx1), ctx),
-		massert.Equal(Root(ctx1a), ctx),
-		massert.Equal(Root(ctx1b), ctx),
-		massert.Equal(Root(ctx2), ctx),
+		massert.Equal([]context.Context{ctx1, ctx2}, Children(ctx)),
+		massert.Equal([]context.Context{ctx1a, ctx1b}, Children(ctx1)),
+		massert.Len(Children(ctx2), 0),
 	))
 }
 
 func TestBreadFirstVisit(t *T) {
-	ctx := New()
-	ctx1 := ChildOf(ctx, "1")
-	ctx1a := ChildOf(ctx1, "a")
-	ctx1b := ChildOf(ctx1, "b")
-	ctx2 := ChildOf(ctx, "2")
+	ctx := context.Background()
+	ctx1 := NewChild(ctx, "1")
+	ctx1a := NewChild(ctx1, "a")
+	ctx1b := NewChild(ctx1, "b")
+	ctx1 = WithChild(ctx1, ctx1a)
+	ctx1 = WithChild(ctx1, ctx1b)
+	ctx2 := NewChild(ctx, "2")
+	ctx = WithChild(ctx, ctx1)
+	ctx = WithChild(ctx, ctx2)
 
 	{
-		got := make([]Context, 0, 5)
-		BreadthFirstVisit(ctx, func(ctx Context) bool {
+		got := make([]context.Context, 0, 5)
+		BreadthFirstVisit(ctx, func(ctx context.Context) bool {
 			got = append(got, ctx)
 			return true
 		})
-		// since children are stored in a map the exact order is non-deterministic
-		massert.Fatal(t, massert.Any(
-			massert.Equal([]Context{ctx, ctx1, ctx2, ctx1a, ctx1b}, got),
-			massert.Equal([]Context{ctx, ctx1, ctx2, ctx1b, ctx1a}, got),
-			massert.Equal([]Context{ctx, ctx2, ctx1, ctx1a, ctx1b}, got),
-			massert.Equal([]Context{ctx, ctx2, ctx1, ctx1b, ctx1a}, got),
-		))
+		massert.Fatal(t,
+			massert.Equal([]context.Context{ctx, ctx1, ctx2, ctx1a, ctx1b}, got),
+		)
 	}
 
 	{
-		got := make([]Context, 0, 3)
-		BreadthFirstVisit(ctx, func(ctx Context) bool {
+		got := make([]context.Context, 0, 3)
+		BreadthFirstVisit(ctx, func(ctx context.Context) bool {
 			if len(Path(ctx)) > 1 {
 				return false
 			}
 			got = append(got, ctx)
 			return true
 		})
-		massert.Fatal(t, massert.Any(
-			massert.Equal([]Context{ctx, ctx1, ctx2}, got),
-			massert.Equal([]Context{ctx, ctx2, ctx1}, got),
-		))
+		massert.Fatal(t,
+			massert.Equal([]context.Context{ctx, ctx1, ctx2}, got),
+		)
 	}
 }
 
-func TestMutableValues(t *T) {
-	fn := func(v interface{}) interface{} {
-		if v == nil {
-			return 0
-		}
-		return v.(int) + 1
-	}
+func TestLocalValues(t *T) {
 
-	var aa []massert.Assertion
+	// test with no value set
+	ctx := context.Background()
+	massert.Fatal(t, massert.All(
+		massert.Nil(LocalValue(ctx, "foo")),
+		massert.Len(LocalValues(ctx), 0),
+	))
 
-	ctx := New()
-	aa = append(aa, massert.Equal(GetSetMutableValue(ctx, false, 0, fn), 0))
-	aa = append(aa, massert.Equal(GetSetMutableValue(ctx, false, 0, fn), 1))
-	aa = append(aa, massert.Equal(GetSetMutableValue(ctx, true, 0, fn), 1))
+	// test basic value retrieval
+	ctx = WithLocalValue(ctx, "foo", "bar")
+	massert.Fatal(t, massert.All(
+		massert.Equal("bar", LocalValue(ctx, "foo")),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "bar"},
+			LocalValues(ctx),
+		),
+	))
 
-	aa = append(aa, massert.Equal(MutableValue(ctx, 0), 1))
+	// test that doesn't conflict with WithValue
+	ctx = context.WithValue(ctx, "foo", "WithValue bar")
+	massert.Fatal(t, massert.All(
+		massert.Equal("bar", LocalValue(ctx, "foo")),
+		massert.Equal("WithValue bar", ctx.Value("foo")),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "bar"},
+			LocalValues(ctx),
+		),
+	))
 
-	ctx1 := ChildOf(ctx, "one")
-	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, true, 0, fn), 0))
-	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, false, 0, fn), 1))
-	aa = append(aa, massert.Equal(GetSetMutableValue(ctx1, true, 0, fn), 1))
+	// test that child doesn't get values
+	child := NewChild(ctx, "child")
+	massert.Fatal(t, massert.All(
+		massert.Equal("bar", LocalValue(ctx, "foo")),
+		massert.Nil(LocalValue(child, "foo")),
+		massert.Len(LocalValues(child), 0),
+	))
 
-	massert.Fatal(t, massert.All(aa...))
-}
+	// test that values on child don't affect parent values
+	child = WithLocalValue(child, "foo", "child bar")
+	ctx = WithChild(ctx, child)
+	massert.Fatal(t, massert.All(
+		massert.Equal("bar", LocalValue(ctx, "foo")),
+		massert.Equal("child bar", LocalValue(child, "foo")),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "bar"},
+			LocalValues(ctx),
+		),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "child bar"},
+			LocalValues(child),
+		),
+	))
 
-func TestMutableValuesParallel(t *T) {
-	const events = 1000000
-	const workers = 10
+	// test that two With calls on the same context generate distinct contexts
+	childA := WithLocalValue(child, "foo2", "baz")
+	childB := WithLocalValue(child, "foo2", "buz")
+	massert.Fatal(t, massert.All(
+		massert.Equal("bar", LocalValue(ctx, "foo")),
+		massert.Equal("child bar", LocalValue(child, "foo")),
+		massert.Nil(LocalValue(child, "foo2")),
+		massert.Equal("baz", LocalValue(childA, "foo2")),
+		massert.Equal("buz", LocalValue(childB, "foo2")),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "child bar", "foo2": "baz"},
+			LocalValues(childA),
+		),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "child bar", "foo2": "buz"},
+			LocalValues(childB),
+		),
+	))
 
-	incr := func(v interface{}) interface{} {
-		if v == nil {
-			return 1
-		}
-		return v.(int) + 1
-	}
-
-	ch := make(chan bool, events)
-	for i := 0; i < events; i++ {
-		ch <- true
-	}
-	close(ch)
-
-	ctx := New()
-	wg := new(sync.WaitGroup)
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for range ch {
-				GetSetMutableValue(ctx, false, 0, incr)
-			}
-		}()
-	}
-
-	wg.Wait()
-	massert.Fatal(t, massert.Equal(events, MutableValue(ctx, 0)))
+	// if a value overwrites a previous one the newer one should show in
+	// LocalValues
+	ctx = WithLocalValue(ctx, "foo", "barbar")
+	massert.Fatal(t, massert.All(
+		massert.Equal("barbar", LocalValue(ctx, "foo")),
+		massert.Equal(
+			map[interface{}]interface{}{"foo": "barbar"},
+			LocalValues(ctx),
+		),
+	))
 }

@@ -10,151 +10,163 @@
 package mctx
 
 import (
-	"sync"
-	"time"
-
-	goctx "context"
+	"context"
+	"fmt"
 )
-
-// Context is the same as the builtin type, but is used to indicate that the
-// Context originally came from this package (aka New or ChildOf).
-type Context goctx.Context
-
-// CancelFunc is a direct alias of the type from the context package, see its
-// docs.
-type CancelFunc = goctx.CancelFunc
-
-// WithValue mimics the function from the context package.
-func WithValue(parent Context, key, val interface{}) Context {
-	return Context(goctx.WithValue(goctx.Context(parent), key, val))
-}
-
-// WithCancel mimics the function from the context package.
-func WithCancel(parent Context) (Context, CancelFunc) {
-	ctx, fn := goctx.WithCancel(goctx.Context(parent))
-	return Context(ctx), fn
-}
-
-// WithDeadline mimics the function from the context package.
-func WithDeadline(parent Context, t time.Time) (Context, CancelFunc) {
-	ctx, fn := goctx.WithDeadline(goctx.Context(parent), t)
-	return Context(ctx), fn
-}
-
-// WithTimeout mimics the function from the context package.
-func WithTimeout(parent Context, d time.Duration) (Context, CancelFunc) {
-	ctx, fn := goctx.WithTimeout(goctx.Context(parent), d)
-	return Context(ctx), fn
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type mutVal struct {
-	l sync.RWMutex
-	v interface{}
-}
-
-type context struct {
-	goctx.Context
-
-	path     []string
-	l        sync.RWMutex
-	parent   *context
-	children map[string]Context
-
-	mutL    sync.RWMutex
-	mutVals map[interface{}]*mutVal
-}
-
 // New returns a new context which can be used as the root context for all
 // purposes in this framework.
-func New() Context {
-	return &context{Context: goctx.Background()}
-}
+//func New() Context {
+//	return &context{Context: goctx.Background()}
+//}
 
-func getCtx(Ctx Context) *context {
-	ctx, ok := Ctx.(*context)
+type ancestryKey int // 0 -> children, 1 -> parent, 2 -> path
+
+const (
+	ancestryKeyChildren ancestryKey = iota
+	ancestryKeyChildrenMap
+	ancestryKeyParent
+	ancestryKeyPath
+)
+
+// Child returns the Context of the given name which was added to parent via
+// WithChild, or nil if no Context of that name was ever added.
+func Child(parent context.Context, name string) context.Context {
+	childrenMap, _ := parent.Value(ancestryKeyChildrenMap).(map[string]int)
+	if len(childrenMap) == 0 {
+		return nil
+	}
+	i, ok := childrenMap[name]
 	if !ok {
-		panic("non-conforming Context used")
+		return nil
 	}
-	return ctx
+	return parent.Value(ancestryKeyChildren).([]context.Context)[i]
 }
 
-// Path returns the sequence of names which were used to produce this context
-// via the ChildOf function.
-func Path(Ctx Context) []string {
-	return getCtx(Ctx).path
+// Children returns all children of this Context which have been kept by
+// WithChild, mapped by their name. If this Context wasn't produced by WithChild
+// then this returns nil.
+func Children(parent context.Context) []context.Context {
+	children, _ := parent.Value(ancestryKeyChildren).([]context.Context)
+	return children
 }
 
-// Children returns all children of this context which have been created by
-// ChildOf, mapped by their name.
-func Children(Ctx Context) map[string]Context {
-	ctx := getCtx(Ctx)
-	out := map[string]Context{}
-	ctx.l.RLock()
-	defer ctx.l.RUnlock()
-	for name, childCtx := range ctx.children {
-		out[name] = childCtx
+func childrenCP(parent context.Context) ([]context.Context, map[string]int) {
+	children := Children(parent)
+	// plus 1 because this is most commonly used in WithChild, which will append
+	// to it. At any rate it doesn't hurt anything.
+	outChildren := make([]context.Context, len(children), len(children)+1)
+	copy(outChildren, children)
+
+	childrenMap, _ := parent.Value(ancestryKeyChildrenMap).(map[string]int)
+	outChildrenMap := make(map[string]int, len(childrenMap)+1)
+	for name, i := range childrenMap {
+		outChildrenMap[name] = i
 	}
-	return out
+
+	return outChildren, outChildrenMap
 }
 
-// Parent returns the parent Context of the given one, or nil if this is a root
-// context (i.e. returned from New).
-func Parent(Ctx Context) Context {
-	return getCtx(Ctx).parent
-}
-
-// Root returns the root Context from which this Context and all of its parents
-// were derived (i.e. the Context which was originally returned from New).
+// parentOf returns the Context from which this one was generated via NewChild.
+// Returns nil if this Context was not generated via NewChild.
 //
-// If the given Context is the root then it is returned as-id.
-func Root(Ctx Context) Context {
-	ctx := getCtx(Ctx)
-	for {
-		if ctx.parent == nil {
-			return ctx
+// This is kept private because the behavior is a bit confusing. This will
+// return the Context which was passed into NewChild, but users would probably
+// expect it to return the one from WithChild if they were to call this.
+func parentOf(ctx context.Context) context.Context {
+	parent, _ := ctx.Value(ancestryKeyParent).(context.Context)
+	return parent
+}
+
+// Path returns the sequence of names which were used to produce this Context
+// via the NewChild function. If this Context wasn't produced by NewChild then
+// this returns nil.
+func Path(ctx context.Context) []string {
+	path, _ := ctx.Value(ancestryKeyPath).([]string)
+	return path
+}
+
+func pathCP(ctx context.Context) []string {
+	path := Path(ctx)
+	// plus 1 because this is most commonly used in NewChild, which will append
+	// to it. At any rate it doesn't hurt anything.
+	outPath := make([]string, len(path), len(path)+1)
+	copy(outPath, path)
+	return outPath
+}
+
+// Name returns the name this Context was generated with via NewChild, or false
+// if this Context was not generated via NewChild.
+func Name(ctx context.Context) (string, bool) {
+	path := Path(ctx)
+	if len(path) == 0 {
+		return "", false
+	}
+	return path[len(path)-1], true
+}
+
+// NewChild creates a new Context based off of the parent one, and returns a new
+// instance of the passed in parent and the new child. The child will have a
+// path which is the parent's path with the given name appended. The parent will
+// have the new child as part of its set of children (see Children function).
+//
+// If the parent already has a child of the given name this function panics.
+func NewChild(parent context.Context, name string) context.Context {
+	if Child(parent, name) != nil {
+		panic(fmt.Sprintf("child with name %q already exists on parent", name))
+	}
+
+	childPath := append(pathCP(parent), name)
+	child := withoutLocalValues(parent)
+	child = context.WithValue(child, ancestryKeyChildren, nil)    // unset children
+	child = context.WithValue(child, ancestryKeyChildrenMap, nil) // unset children
+	child = context.WithValue(child, ancestryKeyParent, parent)
+	child = context.WithValue(child, ancestryKeyPath, childPath)
+	return child
+}
+
+func isChild(parent, child context.Context) bool {
+	parentPath, childPath := Path(parent), Path(child)
+	if len(parentPath) != len(childPath)-1 {
+		return false
+	}
+
+	for i := range parentPath {
+		if parentPath[i] != childPath[i] {
+			return false
 		}
-		ctx = ctx.parent
 	}
+	return true
 }
 
-// ChildOf creates a child of the given context with the given name and returns
-// it. The Path of the returned context will be the path of the parent with its
-// name appended to it. The Children function can be called on the parent to
-// retrieve all children which have been made using this function.
-//
-// TODO If the given Context already has a child with the given name that child
-// will be returned.
-func ChildOf(Ctx Context, name string) Context {
-	ctx, childCtx := getCtx(Ctx), new(context)
-
-	ctx.l.Lock()
-	defer ctx.l.Unlock()
-
-	// set child's path field
-	childCtx.path = make([]string, 0, len(ctx.path)+1)
-	childCtx.path = append(childCtx.path, ctx.path...)
-	childCtx.path = append(childCtx.path, name)
-
-	// set child's parent field
-	childCtx.parent = ctx
-
-	// create child's ctx and store it in parent
-	if ctx.children == nil {
-		ctx.children = map[string]Context{}
+// WithChild returns a modified parent which holds a reference to child in its
+// Children set. If the child's name is already taken in the parent then this
+// function panics.
+func WithChild(parent, child context.Context) context.Context {
+	if !isChild(parent, child) {
+		panic(fmt.Sprintf("child cannot be kept by Context which is not its parent"))
 	}
-	ctx.children[name] = childCtx
-	return childCtx
+
+	name, _ := Name(child)
+	children, childrenMap := childrenCP(parent)
+	if _, ok := childrenMap[name]; ok {
+		panic(fmt.Sprintf("child with name %q already exists on parent", name))
+	}
+	children = append(children, child)
+	childrenMap[name] = len(children) - 1
+
+	parent = context.WithValue(parent, ancestryKeyChildren, children)
+	parent = context.WithValue(parent, ancestryKeyChildrenMap, childrenMap)
+	return parent
 }
 
 // BreadthFirstVisit visits this Context and all of its children, and their
 // children, in a breadth-first order. If the callback returns false then the
 // function returns without visiting any more Contexts.
-//
-// The exact order of visitation is non-deterministic.
-func BreadthFirstVisit(Ctx Context, callback func(Context) bool) {
-	queue := []Context{Ctx}
+func BreadthFirstVisit(ctx context.Context, callback func(context.Context) bool) {
+	queue := []context.Context{ctx}
 	for len(queue) > 0 {
 		if !callback(queue[0]) {
 			return
@@ -167,78 +179,56 @@ func BreadthFirstVisit(Ctx Context, callback func(Context) bool) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// code related to mutable values
+// local value stuff
 
-// MutableValue acts like the Value method, except that it only deals with
-// keys/values set by SetMutableValue.
-func MutableValue(Ctx Context, key interface{}) interface{} {
-	ctx := getCtx(Ctx)
-	ctx.mutL.RLock()
-	defer ctx.mutL.RUnlock()
-	if ctx.mutVals == nil {
-		return nil
-	} else if mVal, ok := ctx.mutVals[key]; ok {
-		mVal.l.RLock()
-		defer mVal.l.RUnlock()
-		return mVal.v
-	}
-	return nil
+type localValsKey int
+
+type localVal struct {
+	prev     *localVal
+	key, val interface{}
 }
 
-// GetSetMutableValue is used to interact with a mutable value on the context in
-// a thread-safe way. The key's value is retrieved and passed to the callback.
-// The value returned from the callback is stored back into the context as well
-// as being returned from this function.
-//
-// If noCallbackIfSet is set to true, then if the key is already set the value
-// will be returned without calling the callback.
-//
-// The callback returning nil is equivalent to unsetting the value.
-//
-// Children of this context will _not_ inherit any of its mutable values.
-//
-// Within the callback it is fine to call other functions/methods on the
-// Context, except for those related to mutable values for this same key (e.g.
-// MutableValue and SetMutableValue).
-func GetSetMutableValue(
-	Ctx Context, noCallbackIfSet bool,
-	key interface{}, fn func(interface{}) interface{},
-) interface{} {
+// WithLocalValue is like WithValue, but the stored value will not be present
+// on any children created via WithChild. Local values must be retrieved with
+// the LocalValue function in this package. Local values share a different
+// namespace than the normal WithValue/Value values (i.e. they do not overlap).
+func WithLocalValue(ctx context.Context, key, val interface{}) context.Context {
+	prev, _ := ctx.Value(localValsKey(0)).(*localVal)
+	return context.WithValue(ctx, localValsKey(0), &localVal{
+		prev: prev,
+		key:  key, val: val,
+	})
+}
 
-	// if noCallbackIfSet, do a fast lookup with MutableValue first.
-	if noCallbackIfSet {
-		if v := MutableValue(Ctx, key); v != nil {
-			return v
+func withoutLocalValues(ctx context.Context) context.Context {
+	return context.WithValue(ctx, localValsKey(0), nil)
+}
+
+// LocalValue returns the value for the given key which was set by a call to
+// WithLocalValue, or nil if no value was set for the given key.
+func LocalValue(ctx context.Context, key interface{}) interface{} {
+	lv, _ := ctx.Value(localValsKey(0)).(*localVal)
+	for {
+		if lv == nil {
+			return nil
+		} else if lv.key == key {
+			return lv.val
 		}
+		lv = lv.prev
 	}
+}
 
-	ctx := getCtx(Ctx)
-	ctx.mutL.Lock()
-	if ctx.mutVals == nil {
-		ctx.mutVals = map[interface{}]*mutVal{}
+// LocalValues returns all key/value pairs which have been set on the Context
+// via WithLocalValue.
+func LocalValues(ctx context.Context) map[interface{}]interface{} {
+	m := map[interface{}]interface{}{}
+	lv, _ := ctx.Value(localValsKey(0)).(*localVal)
+	for {
+		if lv == nil {
+			return m
+		} else if _, ok := m[lv.key]; !ok {
+			m[lv.key] = lv.val
+		}
+		lv = lv.prev
 	}
-	mVal, ok := ctx.mutVals[key]
-	if !ok {
-		mVal = new(mutVal)
-		ctx.mutVals[key] = mVal
-	}
-	ctx.mutL.Unlock()
-
-	mVal.l.Lock()
-	defer mVal.l.Unlock()
-
-	// It's possible something happened between the first check inside the
-	// read-lock and now, so double check this case. It's still good to have the
-	// read-lock check there, it'll handle 99% of the cases.
-	if noCallbackIfSet && mVal.v != nil {
-		return mVal.v
-	}
-
-	mVal.v = fn(mVal.v)
-
-	// TODO if the new v is nil then key could be deleted out of mutVals. But
-	// doing so would be weird in the case that there's another routine which
-	// has already pulled this same mVal out of mutVals and is waiting on its
-	// mutex.
-	return mVal.v
 }

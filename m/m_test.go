@@ -26,7 +26,8 @@ func TestServiceCtx(t *T) {
 
 		// create a child Context before running to ensure it the change propagates
 		// correctly.
-		ctxA := mctx.ChildOf(ctx, "A")
+		ctxA := mctx.NewChild(ctx, "A")
+		ctx = mctx.WithChild(ctx, ctxA)
 
 		params := mcfg.ParamValues{{Name: "log-level", Value: json.RawMessage(`"DEBUG"`)}}
 		if err := mcfg.Populate(ctx, params); err != nil {
@@ -35,14 +36,16 @@ func TestServiceCtx(t *T) {
 			t.Fatal(err)
 		}
 
-		mlog.From(ctxA).Info("foo")
-		mlog.From(ctxA).Debug("bar")
+		mlog.From(ctxA).Info(ctxA, "foo")
+		mlog.From(ctxA).Debug(ctxA, "bar")
 		massert.Fatal(t, massert.All(
 			massert.Len(msgs, 2),
 			massert.Equal(msgs[0].Level.String(), "INFO"),
-			massert.Equal(msgs[0].Description.String(), "(/A) foo"),
+			massert.Equal(msgs[0].Description, "foo"),
+			massert.Equal(msgs[0].Context, ctxA),
 			massert.Equal(msgs[1].Level.String(), "DEBUG"),
-			massert.Equal(msgs[1].Description.String(), "(/A) bar"),
+			massert.Equal(msgs[1].Description, "bar"),
+			massert.Equal(msgs[1].Context, ctxA),
 		))
 	})
 }

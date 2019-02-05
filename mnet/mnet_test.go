@@ -37,7 +37,7 @@ func TestIsReservedIP(t *T) {
 
 func TestMListen(t *T) {
 	ctx := mtest.NewCtx()
-	l := MListen(ctx, "", "")
+	ctx, l := MListen(ctx, "", "")
 	mtest.Run(ctx, t, func() {
 		go func() {
 			conn, err := net.Dial("tcp", l.Addr().String())

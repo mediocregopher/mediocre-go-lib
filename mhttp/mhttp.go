@@ -17,27 +17,39 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
+// MServer is returned by MListenAndServe and simply wraps an *http.Server.
+type MServer struct {
+	*http.Server
+	ctx context.Context
+}
+
 // MListenAndServe returns an http.Server which will be initialized and have
 // ListenAndServe called on it (asynchronously) when the start event is
-// triggered on ctx (see mrun.Start). The Server will have Shutdown called on it
-// when the stop event is triggered on ctx (see mrun.Stop).
+// triggered on the returned Context (see mrun.Start). The Server will have
+// Shutdown called on it when the stop event is triggered on the returned
+// Context (see mrun.Stop).
 //
 // This function automatically handles setting up configuration parameters via
 // mcfg. The default listen address is ":0".
-func MListenAndServe(ctx mctx.Context, h http.Handler) *http.Server {
-	ctx = mctx.ChildOf(ctx, "http")
-	listener := mnet.MListen(ctx, "tcp", "")
+func MListenAndServe(ctx context.Context, h http.Handler) (context.Context, *MServer) {
+	srv := &MServer{
+		Server: &http.Server{Handler: h},
+		ctx:    mctx.NewChild(ctx, "http"),
+	}
+
+	var listener *mnet.MListener
+	srv.ctx, listener = mnet.MListen(srv.ctx, "tcp", "")
 	listener.NoCloseOnStop = true // http.Server.Shutdown will do this
 
-	logger := mlog.From(ctx)
-	logger.SetKV(listener)
+	// TODO the equivalent functionality as here will be added with annotations
+	//logger := mlog.From(ctx)
+	//logger.SetKV(listener)
 
-	srv := http.Server{Handler: h}
-	mrun.OnStart(ctx, func(mctx.Context) error {
+	srv.ctx = mrun.OnStart(srv.ctx, func(context.Context) error {
 		srv.Addr = listener.Addr().String()
-		mrun.Thread(ctx, func() error {
+		srv.ctx = mrun.Thread(srv.ctx, func() error {
 			if err := srv.Serve(listener); err != http.ErrServerClosed {
-				logger.Error("error serving listener", merr.KV(err))
+				mlog.Error(srv.ctx, "error serving listener", merr.KV(err))
 				return err
 			}
 			return nil
@@ -45,15 +57,15 @@ func MListenAndServe(ctx mctx.Context, h http.Handler) *http.Server {
 		return nil
 	})
 
-	mrun.OnStop(ctx, func(innerCtx mctx.Context) error {
-		logger.Info("shutting down server")
-		if err := srv.Shutdown(context.Context(innerCtx)); err != nil {
+	srv.ctx = mrun.OnStop(srv.ctx, func(innerCtx context.Context) error {
+		mlog.Info(srv.ctx, "shutting down server")
+		if err := srv.Shutdown(innerCtx); err != nil {
 			return err
 		}
-		return mrun.Wait(ctx, innerCtx.Done())
+		return mrun.Wait(srv.ctx, innerCtx.Done())
 	})
 
-	return &srv
+	return mctx.WithChild(ctx, srv.ctx), srv
 }
 
 // AddXForwardedFor populates the X-Forwarded-For header on the Request to

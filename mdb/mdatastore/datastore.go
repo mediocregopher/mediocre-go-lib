@@ -3,6 +3,8 @@
 package mdatastore
 
 import (
+	"context"
+
 	"cloud.google.com/go/datastore"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mdb"
@@ -17,38 +19,39 @@ type Datastore struct {
 	*datastore.Client
 
 	gce *mdb.GCE
-	log *mlog.Logger
+	ctx context.Context
 }
 
 // MNew returns a Datastore instance which will be initialized and configured
-// when the start event is triggered on ctx (see mrun.Start). The Datastore
-// instance will have Close called on it when the stop event is triggered on ctx
-// (see mrun.Stop).
+// when the start event is triggered on the returned Context (see mrun.Start).
+// The Datastore instance will have Close called on it when the stop event is
+// triggered on the returned Context (see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
-func MNew(ctx mctx.Context, gce *mdb.GCE) *Datastore {
+func MNew(ctx context.Context, gce *mdb.GCE) (context.Context, *Datastore) {
 	if gce == nil {
-		gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.MGCE(ctx, "")
 	}
 
-	ctx = mctx.ChildOf(ctx, "datastore")
 	ds := &Datastore{
 		gce: gce,
-		log: mlog.From(ctx),
+		ctx: mctx.NewChild(ctx, "datastore"),
 	}
-	ds.log.SetKV(ds)
 
-	mrun.OnStart(ctx, func(innerCtx mctx.Context) error {
-		ds.log.Info("connecting to datastore")
+	// TODO the equivalent functionality as here will be added with annotations
+	// ds.log.SetKV(ds)
+
+	ds.ctx = mrun.OnStart(ds.ctx, func(innerCtx context.Context) error {
+		mlog.Info(ds.ctx, "connecting to datastore")
 		var err error
 		ds.Client, err = datastore.NewClient(innerCtx, ds.gce.Project, ds.gce.ClientOptions()...)
 		return merr.WithKV(err, ds.KV())
 	})
-	mrun.OnStop(ctx, func(mctx.Context) error {
+	ds.ctx = mrun.OnStop(ds.ctx, func(context.Context) error {
 		return ds.Client.Close()
 	})
-	return ds
+	return mctx.WithChild(ctx, ds.ctx), ds
 }
 
 // KV implements the mlog.KVer interface.

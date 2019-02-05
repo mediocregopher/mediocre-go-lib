@@ -2,11 +2,11 @@ package mcfg
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	. "testing"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/mchk"
 	"github.com/stretchr/testify/assert"
@@ -14,12 +14,12 @@ import (
 )
 
 func TestSourceCLIHelp(t *T) {
-	ctx := mctx.New()
-	Int(ctx, "foo", 5, "Test int param  ") // trailing space should be trimmed
-	Bool(ctx, "bar", "Test bool param.")
-	String(ctx, "baz", "baz", "Test string param")
-	RequiredString(ctx, "baz2", "")
-	RequiredString(ctx, "baz3", "")
+	ctx := context.Background()
+	ctx, _ = Int(ctx, "foo", 5, "Test int param  ") // trailing space should be trimmed
+	ctx, _ = Bool(ctx, "bar", "Test bool param.")
+	ctx, _ = String(ctx, "baz", "baz", "Test string param")
+	ctx, _ = RequiredString(ctx, "baz2", "")
+	ctx, _ = RequiredString(ctx, "baz3", "")
 	src := SourceCLI{}
 
 	buf := new(bytes.Buffer)

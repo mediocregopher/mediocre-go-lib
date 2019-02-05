@@ -1,6 +1,7 @@
 package mcfg
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,15 +11,16 @@ import (
 )
 
 // Param is a configuration parameter which can be populated by Populate. The
-// Param will exist as part of an mctx.Context, relative to its Path. For
-// example, a Param with name "addr" under an mctx.Context with Path of
-// []string{"foo","bar"} will be setabble on the CLI via "--foo-bar-addr". Other
-// configuration Sources may treat the path/name differently, however.
+// Param will exist as part of a Context, relative to its path (see the mctx
+// package for more on Context path). For example, a Param with name "addr"
+// under a Context with path of []string{"foo","bar"} will be setable on the CLI
+// via "--foo-bar-addr". Other configuration Sources may treat the path/name
+// differently, however.
 //
 // Param values are always unmarshaled as JSON values into the Into field of the
 // Param, regardless of the actual Source.
 type Param struct {
-	// How the parameter will be identified within an mctx.Context.
+	// How the parameter will be identified within a Context.
 	Name string
 
 	// A helpful description of how a parameter is expected to be used.
@@ -42,9 +44,9 @@ type Param struct {
 	// value of the parameter.
 	Into interface{}
 
-	// The Path field of the Cfg this Param is attached to. NOTE that this
-	// will be automatically filled in when the Param is added to the Cfg.
-	Path []string
+	// The Context this Param was added to. NOTE that this will be automatically
+	// filled in by MustAdd when the Param is added to the Context.
+	Context context.Context
 }
 
 func paramFullName(path []string, name string) string {
@@ -65,118 +67,145 @@ func (p Param) fuzzyParse(v string) json.RawMessage {
 	return json.RawMessage(v)
 }
 
-// MustAdd adds the given Param to the mctx.Context. It will panic if a Param of
-// the same Name already exists in the mctx.Context.
-func MustAdd(ctx mctx.Context, param Param) {
+type ctxKey string
+
+func getParam(ctx context.Context, name string) (Param, bool) {
+	param, ok := mctx.LocalValue(ctx, ctxKey(name)).(Param)
+	return param, ok
+}
+
+// MustAdd returns a Context with the given Param added to it. It will panic if
+// a Param with the same Name already exists in the Context.
+func MustAdd(ctx context.Context, param Param) context.Context {
 	param.Name = strings.ToLower(param.Name)
-	param.Path = mctx.Path(ctx)
+	param.Context = ctx
 
-	cfg := get(ctx)
-	if _, ok := cfg.params[param.Name]; ok {
-		panic(fmt.Sprintf("Context Path:%#v Name:%q already exists", param.Path, param.Name))
+	if _, ok := getParam(ctx, param.Name); ok {
+		path := mctx.Path(ctx)
+		panic(fmt.Sprintf("Context Path:%#v Name:%q already exists", path, param.Name))
 	}
-	cfg.params[param.Name] = param
+
+	return mctx.WithLocalValue(ctx, ctxKey(param.Name), param)
 }
 
-// Int64 returns an *int64 which will be populated once Populate is run.
-func Int64(ctx mctx.Context, name string, defaultVal int64, usage string) *int64 {
+func getLocalParams(ctx context.Context) []Param {
+	localVals := mctx.LocalValues(ctx)
+	params := make([]Param, 0, len(localVals))
+	for _, val := range localVals {
+		if param, ok := val.(Param); ok {
+			params = append(params, param)
+		}
+	}
+	return params
+}
+
+// Int64 returns an *int64 which will be populated once Populate is run on the
+// returned Context.
+func Int64(ctx context.Context, name string, defaultVal int64, usage string) (context.Context, *int64) {
 	i := defaultVal
-	MustAdd(ctx, Param{Name: name, Usage: usage, Into: &i})
-	return &i
+	ctx = MustAdd(ctx, Param{Name: name, Usage: usage, Into: &i})
+	return ctx, &i
 }
 
-// RequiredInt64 returns an *int64 which will be populated once Populate is run,
-// and which must be supplied by a configuration Source.
-func RequiredInt64(ctx mctx.Context, name string, usage string) *int64 {
+// RequiredInt64 returns an *int64 which will be populated once Populate is run
+// on the returned Context, and which must be supplied by a configuration
+// Source.
+func RequiredInt64(ctx context.Context, name string, usage string) (context.Context, *int64) {
 	var i int64
-	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &i})
-	return &i
+	ctx = MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &i})
+	return ctx, &i
 }
 
-// Int returns an *int which will be populated once Populate is run.
-func Int(ctx mctx.Context, name string, defaultVal int, usage string) *int {
+// Int returns an *int which will be populated once Populate is run on the
+// returned Context.
+func Int(ctx context.Context, name string, defaultVal int, usage string) (context.Context, *int) {
 	i := defaultVal
-	MustAdd(ctx, Param{Name: name, Usage: usage, Into: &i})
-	return &i
+	ctx = MustAdd(ctx, Param{Name: name, Usage: usage, Into: &i})
+	return ctx, &i
 }
 
-// RequiredInt returns an *int which will be populated once Populate is run, and
-// which must be supplied by a configuration Source.
-func RequiredInt(ctx mctx.Context, name string, usage string) *int {
+// RequiredInt returns an *int which will be populated once Populate is run on
+// the returned Context, and which must be supplied by a configuration Source.
+func RequiredInt(ctx context.Context, name string, usage string) (context.Context, *int) {
 	var i int
-	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &i})
-	return &i
+	ctx = MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &i})
+	return ctx, &i
 }
 
-// String returns a *string which will be populated once Populate is run.
-func String(ctx mctx.Context, name, defaultVal, usage string) *string {
+// String returns a *string which will be populated once Populate is run on the
+// returned Context.
+func String(ctx context.Context, name, defaultVal, usage string) (context.Context, *string) {
 	s := defaultVal
-	MustAdd(ctx, Param{Name: name, Usage: usage, IsString: true, Into: &s})
-	return &s
+	ctx = MustAdd(ctx, Param{Name: name, Usage: usage, IsString: true, Into: &s})
+	return ctx, &s
 }
 
 // RequiredString returns a *string which will be populated once Populate is
-// run, and which must be supplied by a configuration Source.
-func RequiredString(ctx mctx.Context, name, usage string) *string {
+// run on the returned Context, and which must be supplied by a configuration
+// Source.
+func RequiredString(ctx context.Context, name, usage string) (context.Context, *string) {
 	var s string
-	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &s})
-	return &s
+	ctx = MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &s})
+	return ctx, &s
 }
 
-// Bool returns a *bool which will be populated once Populate is run, and which
-// defaults to false if unconfigured.
+// Bool returns a *bool which will be populated once Populate is run on the
+// returned Context, and which defaults to false if unconfigured.
 //
 // The default behavior of all Sources is that a boolean parameter will be set
 // to true unless the value is "", 0, or false. In the case of the CLI Source
 // the value will also be true when the parameter is used with no value at all,
 // as would be expected.
-func Bool(ctx mctx.Context, name, usage string) *bool {
+func Bool(ctx context.Context, name, usage string) (context.Context, *bool) {
 	var b bool
-	MustAdd(ctx, Param{Name: name, Usage: usage, IsBool: true, Into: &b})
-	return &b
+	ctx = MustAdd(ctx, Param{Name: name, Usage: usage, IsBool: true, Into: &b})
+	return ctx, &b
 }
 
-// TS returns an *mtime.TS which will be populated once Populate is run.
-func TS(ctx mctx.Context, name string, defaultVal mtime.TS, usage string) *mtime.TS {
+// TS returns an *mtime.TS which will be populated once Populate is run on the
+// returned Context.
+func TS(ctx context.Context, name string, defaultVal mtime.TS, usage string) (context.Context, *mtime.TS) {
 	t := defaultVal
-	MustAdd(ctx, Param{Name: name, Usage: usage, Into: &t})
-	return &t
+	ctx = MustAdd(ctx, Param{Name: name, Usage: usage, Into: &t})
+	return ctx, &t
 }
 
-// RequiredTS returns an *mtime.TS which will be populated once Populate is run,
-// and which must be supplied by a configuration Source.
-func RequiredTS(ctx mctx.Context, name, usage string) *mtime.TS {
+// RequiredTS returns an *mtime.TS which will be populated once Populate is run
+// on the returned Context, and which must be supplied by a configuration
+// Source.
+func RequiredTS(ctx context.Context, name, usage string) (context.Context, *mtime.TS) {
 	var t mtime.TS
-	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &t})
-	return &t
+	ctx = MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: &t})
+	return ctx, &t
 }
 
-// Duration returns an *mtime.Duration which will be populated once
-// Populate is run.
-func Duration(ctx mctx.Context, name string, defaultVal mtime.Duration, usage string) *mtime.Duration {
+// Duration returns an *mtime.Duration which will be populated once Populate is
+// run on the returned Context.
+func Duration(ctx context.Context, name string, defaultVal mtime.Duration, usage string) (context.Context, *mtime.Duration) {
 	d := defaultVal
-	MustAdd(ctx, Param{Name: name, Usage: usage, IsString: true, Into: &d})
-	return &d
+	ctx = MustAdd(ctx, Param{Name: name, Usage: usage, IsString: true, Into: &d})
+	return ctx, &d
 }
 
 // RequiredDuration returns an *mtime.Duration which will be populated once
-// Populate is run, and which must be supplied by a configuration Source.
-func RequiredDuration(ctx mctx.Context, name string, defaultVal mtime.Duration, usage string) *mtime.Duration {
+// Populate is run on the returned Context, and which must be supplied by a
+// configuration Source.
+func RequiredDuration(ctx context.Context, name string, defaultVal mtime.Duration, usage string) (context.Context, *mtime.Duration) {
 	var d mtime.Duration
-	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &d})
-	return &d
+	ctx = MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, IsString: true, Into: &d})
+	return ctx, &d
 }
 
 // JSON reads the parameter value as a JSON value and unmarshals it into the
 // given interface{} (which should be a pointer). The receiver (into) is also
 // used to determine the default value.
-func JSON(ctx mctx.Context, name string, into interface{}, usage string) {
-	MustAdd(ctx, Param{Name: name, Usage: usage, Into: into})
+func JSON(ctx context.Context, name string, into interface{}, usage string) context.Context {
+	return MustAdd(ctx, Param{Name: name, Usage: usage, Into: into})
 }
 
 // RequiredJSON reads the parameter value as a JSON value and unmarshals it into
 // the given interface{} (which should be a pointer). The value must be supplied
 // by a configuration Source.
-func RequiredJSON(ctx mctx.Context, name string, into interface{}, usage string) {
-	MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: into})
+func RequiredJSON(ctx context.Context, name string, into interface{}, usage string) context.Context {
+	return MustAdd(ctx, Param{Name: name, Required: true, Usage: usage, Into: into})
 }

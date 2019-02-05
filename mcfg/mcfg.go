@@ -3,6 +3,7 @@
 package mcfg
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -17,28 +18,10 @@ import (
 // - JSON file
 // - YAML file
 
-type ctxCfg struct {
-	path   []string
-	params map[string]Param
-}
-
-type ctxKey int
-
-func get(ctx mctx.Context) *ctxCfg {
-	return mctx.GetSetMutableValue(ctx, true, ctxKey(0),
-		func(interface{}) interface{} {
-			return &ctxCfg{
-				path:   mctx.Path(ctx),
-				params: map[string]Param{},
-			}
-		},
-	).(*ctxCfg)
-}
-
 func sortParams(params []Param) {
 	sort.Slice(params, func(i, j int) bool {
 		a, b := params[i], params[j]
-		aPath, bPath := a.Path, b.Path
+		aPath, bPath := mctx.Path(a.Context), mctx.Path(b.Context)
 		for {
 			switch {
 			case len(aPath) == 0 && len(bPath) == 0:
@@ -59,12 +42,12 @@ func sortParams(params []Param) {
 // returns all Params gathered by recursively retrieving them from this Context
 // and its children. Returned Params are sorted according to their Path and
 // Name.
-func collectParams(ctx mctx.Context) []Param {
+func collectParams(ctx context.Context) []Param {
 	var params []Param
 
-	var visit func(mctx.Context)
-	visit = func(ctx mctx.Context) {
-		for _, param := range get(ctx).params {
+	var visit func(context.Context)
+	visit = func(ctx context.Context) {
+		for _, param := range getLocalParams(ctx) {
 			params = append(params, param)
 		}
 
@@ -98,9 +81,10 @@ func populate(params []Param, src Source) error {
 	// later. There should not be any duplicates here.
 	pM := map[string]Param{}
 	for _, p := range params {
-		hash := paramHash(p.Path, p.Name)
+		path := mctx.Path(p.Context)
+		hash := paramHash(path, p.Name)
 		if _, ok := pM[hash]; ok {
-			panic("duplicate Param: " + paramFullName(p.Path, p.Name))
+			panic("duplicate Param: " + paramFullName(path, p.Name))
 		}
 		pM[hash] = p
 	}
@@ -127,7 +111,7 @@ func populate(params []Param, src Source) error {
 			continue
 		} else if _, ok := pvM[hash]; !ok {
 			return merr.New("required parameter is not set",
-				"param", paramFullName(p.Path, p.Name))
+				"param", paramFullName(mctx.Path(p.Context), p.Name))
 		}
 	}
 
@@ -144,12 +128,12 @@ func populate(params []Param, src Source) error {
 }
 
 // Populate uses the Source to populate the values of all Params which were
-// added to the given mctx.Context, and all of its children. Populate may be
-// called multiple times with the same mctx.Context, each time will only affect
-// the values of the Params which were provided by the respective Source.
+// added to the given Context, and all of its children. Populate may be called
+// multiple times with the same Context, each time will only affect the values
+// of the Params which were provided by the respective Source.
 //
 // Source may be nil to indicate that no configuration is provided. Only default
 // values will be used, and if any paramaters are required this will error.
-func Populate(ctx mctx.Context, src Source) error {
+func Populate(ctx context.Context, src Source) error {
 	return populate(collectParams(ctx), src)
 }

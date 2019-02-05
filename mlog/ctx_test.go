@@ -1,60 +1,67 @@
 package mlog
 
 import (
+	"bytes"
+	"context"
+	"strings"
 	. "testing"
 
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
-func TestContextStuff(t *T) {
-	ctx := mctx.New()
-	ctx1 := mctx.ChildOf(ctx, "1")
-	ctx1a := mctx.ChildOf(ctx1, "a")
-	ctx1b := mctx.ChildOf(ctx1, "b")
+func TestContextLogging(t *T) {
 
-	var descrs []string
+	var lines []string
 	l := NewLogger()
 	l.SetHandler(func(msg Message) error {
-		descrs = append(descrs, msg.Description.String())
+		buf := new(bytes.Buffer)
+		if err := DefaultFormat(buf, msg); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, strings.TrimSuffix(buf.String(), "\n"))
 		return nil
 	})
-	CtxSet(ctx, l)
 
-	From(ctx1a).Info("ctx1a")
-	From(ctx1).Info("ctx1")
-	From(ctx).Info("ctx")
-	From(ctx1b).Debug("ctx1b (shouldn't show up)")
-	From(ctx1b).Info("ctx1b")
+	ctx := Set(context.Background(), l)
+	ctx1 := mctx.NewChild(ctx, "1")
+	ctx1a := mctx.NewChild(ctx1, "a")
+	ctx1b := mctx.NewChild(ctx1, "b")
+	ctx1 = mctx.WithChild(ctx1, ctx1a)
+	ctx1 = mctx.WithChild(ctx1, ctx1b)
+	ctx = mctx.WithChild(ctx, ctx1)
 
-	ctx2 := mctx.ChildOf(ctx, "2")
-	From(ctx2).Info("ctx2")
+	From(ctx).Info(ctx1a, "ctx1a")
+	From(ctx).Info(ctx1, "ctx1")
+	From(ctx).Info(ctx, "ctx")
+	From(ctx).Debug(ctx1b, "ctx1b (shouldn't show up)")
+	From(ctx).Info(ctx1b, "ctx1b")
+
+	ctx2 := mctx.NewChild(ctx, "2")
+	ctx = mctx.WithChild(ctx, ctx2)
+	From(ctx2).Info(ctx2, "ctx2")
 
 	massert.Fatal(t, massert.All(
-		massert.Len(descrs, 5),
-		massert.Equal(descrs[0], "(/1/a) ctx1a"),
-		massert.Equal(descrs[1], "(/1) ctx1"),
-		massert.Equal(descrs[2], "ctx"),
-		massert.Equal(descrs[3], "(/1/b) ctx1b"),
-		massert.Equal(descrs[4], "(/2) ctx2"),
+		massert.Len(lines, 5),
+		massert.Equal(lines[0], "~ INFO -- (/1/a) ctx1a"),
+		massert.Equal(lines[1], "~ INFO -- (/1) ctx1"),
+		massert.Equal(lines[2], "~ INFO -- ctx"),
+		massert.Equal(lines[3], "~ INFO -- (/1/b) ctx1b"),
+		massert.Equal(lines[4], "~ INFO -- (/2) ctx2"),
 	))
 
-	// use CtxSetAll to change all MaxLevels in-place
-	ctx2L := From(ctx2)
-	CtxSetAll(ctx, func(_ mctx.Context, l *Logger) *Logger {
-		l.SetMaxLevel(DebugLevel)
-		return l
-	})
+	// changing MaxLevel on ctx's Logger should change it for all
+	From(ctx).SetMaxLevel(DebugLevel)
 
-	descrs = descrs[:0]
-	From(ctx).Info("ctx")
-	From(ctx).Debug("ctx debug")
-	ctx2L.Debug("ctx2L debug")
+	lines = lines[:0]
+	From(ctx).Info(ctx, "ctx")
+	From(ctx).Debug(ctx, "ctx debug")
+	From(ctx2).Debug(ctx2, "ctx2 debug")
 
 	massert.Fatal(t, massert.All(
-		massert.Len(descrs, 3),
-		massert.Equal(descrs[0], "ctx"),
-		massert.Equal(descrs[1], "ctx debug"),
-		massert.Equal(descrs[2], "(/2) ctx2L debug"),
+		massert.Len(lines, 3),
+		massert.Equal(lines[0], "~ INFO -- ctx"),
+		massert.Equal(lines[1], "~ DEBUG -- ctx debug"),
+		massert.Equal(lines[2], "~ DEBUG -- (/2) ctx2 debug"),
 	))
 }

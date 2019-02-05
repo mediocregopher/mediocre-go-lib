@@ -1,6 +1,7 @@
 package mcfg
 
 import (
+	"context"
 	. "testing"
 
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
@@ -9,11 +10,12 @@ import (
 
 func TestPopulate(t *T) {
 	{
-		ctx := mctx.New()
-		a := Int(ctx, "a", 0, "")
-		ctxChild := mctx.ChildOf(ctx, "foo")
-		b := Int(ctxChild, "b", 0, "")
-		c := Int(ctxChild, "c", 0, "")
+		ctx := context.Background()
+		ctx, a := Int(ctx, "a", 0, "")
+		ctxChild := mctx.NewChild(ctx, "foo")
+		ctxChild, b := Int(ctxChild, "b", 0, "")
+		ctxChild, c := Int(ctxChild, "c", 0, "")
+		ctx = mctx.WithChild(ctx, ctxChild)
 
 		err := Populate(ctx, SourceCLI{
 			Args: []string{"--a=1", "--foo-b=2"},
@@ -25,11 +27,12 @@ func TestPopulate(t *T) {
 	}
 
 	{ // test that required params are enforced
-		ctx := mctx.New()
-		a := Int(ctx, "a", 0, "")
-		ctxChild := mctx.ChildOf(ctx, "foo")
-		b := Int(ctxChild, "b", 0, "")
-		c := RequiredInt(ctxChild, "c", "")
+		ctx := context.Background()
+		ctx, a := Int(ctx, "a", 0, "")
+		ctxChild := mctx.NewChild(ctx, "foo")
+		ctxChild, b := Int(ctxChild, "b", 0, "")
+		ctxChild, c := RequiredInt(ctxChild, "c", "")
+		ctx = mctx.WithChild(ctx, ctxChild)
 
 		err := Populate(ctx, SourceCLI{
 			Args: []string{"--a=1", "--foo-b=2"},

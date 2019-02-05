@@ -12,8 +12,8 @@ import (
 
 func TestBasic(t *T) {
 	ctx := mtest.NewCtx()
-	mtest.SetEnv(ctx, "GCE_PROJECT", "testProject")
-	bt := MNew(ctx, nil, "testInstance")
+	ctx = mtest.SetEnv(ctx, "GCE_PROJECT", "testProject")
+	ctx, bt := MNew(ctx, nil, "testInstance")
 
 	mtest.Run(ctx, t, func() {
 		tableName := "test-" + mrand.Hex(8)

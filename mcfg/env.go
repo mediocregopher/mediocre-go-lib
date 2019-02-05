@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
@@ -49,7 +50,7 @@ func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 
 	pM := map[string]Param{}
 	for _, p := range params {
-		name := env.expectedName(p.Path, p.Name)
+		name := env.expectedName(mctx.Path(p.Context), p.Name)
 		pM[name] = p
 	}
 
@@ -63,7 +64,7 @@ func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 		if p, ok := pM[k]; ok {
 			pvs = append(pvs, ParamValue{
 				Name:  p.Name,
-				Path:  p.Path,
+				Path:  mctx.Path(p.Context),
 				Value: p.fuzzyParse(v),
 			})
 		}

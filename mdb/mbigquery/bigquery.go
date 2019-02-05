@@ -34,7 +34,7 @@ func isErrAlreadyExists(err error) bool {
 type BigQuery struct {
 	*bigquery.Client
 	gce *mdb.GCE
-	log *mlog.Logger
+	ctx context.Context
 
 	// key is dataset/tableName
 	tablesL        sync.Mutex
@@ -43,35 +43,37 @@ type BigQuery struct {
 }
 
 // MNew returns a BigQuery instance which will be initialized and configured
-// when the start event is triggered on ctx (see mrun.Start). The BigQuery
-// instance will have Close called on it when the stop event is triggered on ctx
-// (see mrun.Stop).
+// when the start event is triggered on the returned (see mrun.Start). The
+// BigQuery instance will have Close called on it when the stop event is
+// triggered on the returned Context (see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
-func MNew(ctx mctx.Context, gce *mdb.GCE) *BigQuery {
+func MNew(ctx context.Context, gce *mdb.GCE) (context.Context, *BigQuery) {
 	if gce == nil {
-		gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.MGCE(ctx, "")
 	}
 
-	ctx = mctx.ChildOf(ctx, "bigquery")
 	bq := &BigQuery{
 		gce:            gce,
 		tables:         map[[2]string]*bigquery.Table{},
 		tableUploaders: map[[2]string]*bigquery.Uploader{},
-		log:            mlog.From(ctx),
+		ctx:            mctx.NewChild(ctx, "bigquery"),
 	}
-	bq.log.SetKV(bq)
-	mrun.OnStart(ctx, func(innerCtx mctx.Context) error {
-		bq.log.Info("connecting to bigquery")
+
+	// TODO the equivalent functionality as here will be added with annotations
+	// bq.log.SetKV(bq)
+
+	bq.ctx = mrun.OnStart(bq.ctx, func(innerCtx context.Context) error {
+		mlog.Info(bq.ctx, "connecting to bigquery")
 		var err error
 		bq.Client, err = bigquery.NewClient(innerCtx, bq.gce.Project, bq.gce.ClientOptions()...)
 		return merr.WithKV(err, bq.KV())
 	})
-	mrun.OnStop(ctx, func(mctx.Context) error {
+	bq.ctx = mrun.OnStop(bq.ctx, func(context.Context) error {
 		return bq.Client.Close()
 	})
-	return bq
+	return mctx.WithChild(ctx, bq.ctx), bq
 }
 
 // KV implements the mlog.KVer interface.
@@ -99,7 +101,7 @@ func (bq *BigQuery) Table(
 	}
 
 	kv := mlog.KV{"bigQueryDataset": dataset, "bigQueryTable": tableName}
-	bq.log.Debug("creating/grabbing table", kv)
+	mlog.Debug(bq.ctx, "creating/grabbing table", kv)
 
 	schema, err := bigquery.InferSchema(schemaObj)
 	if err != nil {

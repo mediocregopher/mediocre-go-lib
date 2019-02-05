@@ -15,7 +15,7 @@ import (
 func TestMListenAndServe(t *T) {
 	ctx := mtest.NewCtx()
 
-	srv := MListenAndServe(ctx, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	ctx, srv := MListenAndServe(ctx, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		io.Copy(rw, r.Body)
 	}))
 

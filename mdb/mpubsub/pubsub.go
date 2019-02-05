@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TODO this package still uses context.Context in the callback functions
 // TODO Consume (and probably BatchConsume) don't properly handle the Client
 // being closed.
 
@@ -39,38 +38,39 @@ type PubSub struct {
 	*pubsub.Client
 
 	gce *mdb.GCE
-	log *mlog.Logger
+	ctx context.Context
 }
 
 // MNew returns a PubSub instance which will be initialized and configured when
-// the start event is triggered on ctx (see mrun.Start). The PubSub instance
-// will have Close called on it when the stop event is triggered on ctx (see
-// mrun.Stop).
+// the start event is triggered on the returned Context (see mrun.Start). The
+// PubSub instance will have Close called on it when the stop event is triggered
+// on the returned Context(see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
-func MNew(ctx mctx.Context, gce *mdb.GCE) *PubSub {
+func MNew(ctx context.Context, gce *mdb.GCE) (context.Context, *PubSub) {
 	if gce == nil {
-		gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.MGCE(ctx, "")
 	}
 
-	ctx = mctx.ChildOf(ctx, "pubsub")
 	ps := &PubSub{
 		gce: gce,
-		log: mlog.From(ctx),
+		ctx: mctx.NewChild(ctx, "pubsub"),
 	}
-	ps.log.SetKV(ps)
 
-	mrun.OnStart(ctx, func(innerCtx mctx.Context) error {
-		ps.log.Info("connecting to pubsub")
+	// TODO the equivalent functionality as here will be added with annotations
+	// ps.log.SetKV(ps)
+
+	ps.ctx = mrun.OnStart(ps.ctx, func(innerCtx context.Context) error {
+		mlog.Info(ps.ctx, "connecting to pubsub")
 		var err error
 		ps.Client, err = pubsub.NewClient(innerCtx, ps.gce.Project, ps.gce.ClientOptions()...)
 		return merr.WithKV(err, ps.KV())
 	})
-	mrun.OnStop(ctx, func(mctx.Context) error {
+	ps.ctx = mrun.OnStop(ps.ctx, func(context.Context) error {
 		return ps.Client.Close()
 	})
-	return ps
+	return mctx.WithChild(ctx, ps.ctx), ps
 }
 
 // KV implements the mlog.KVer interface
@@ -226,7 +226,7 @@ func (s *Subscription) Consume(ctx context.Context, fn ConsumerFunc, opts Consum
 
 			ok, err := fn(context.Context(innerCtx), msg)
 			if err != nil {
-				s.topic.ps.log.Warn("error consuming pubsub message", s, merr.KV(err))
+				mlog.Warn(s.topic.ps.ctx, "error consuming pubsub message", s, merr.KV(err))
 			}
 
 			if ok {
@@ -238,7 +238,7 @@ func (s *Subscription) Consume(ctx context.Context, fn ConsumerFunc, opts Consum
 		if octx.Err() == context.Canceled || err == nil {
 			return
 		} else if err != nil {
-			s.topic.ps.log.Warn("error consuming from pubsub", s, merr.KV(err))
+			mlog.Warn(s.topic.ps.ctx, "error consuming from pubsub", s, merr.KV(err))
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -331,7 +331,7 @@ func (s *Subscription) BatchConsume(
 				}
 				ret, err := fn(thisCtx, msgs)
 				if err != nil {
-					s.topic.ps.log.Warn("error consuming pubsub batch messages", s, merr.KV(err))
+					mlog.Warn(s.topic.ps.ctx, "error consuming pubsub batch messages", s, merr.KV(err))
 				}
 				for i := range thisGroup {
 					thisGroup[i].retCh <- ret // retCh is buffered

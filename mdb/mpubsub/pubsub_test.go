@@ -14,8 +14,8 @@ import (
 // this requires the pubsub emulator to be running
 func TestPubSub(t *T) {
 	ctx := mtest.NewCtx()
-	mtest.SetEnv(ctx, "GCE_PROJECT", "test")
-	ps := MNew(ctx, nil)
+	ctx = mtest.SetEnv(ctx, "GCE_PROJECT", "test")
+	ctx, ps := MNew(ctx, nil)
 	mtest.Run(ctx, t, func() {
 		topicName := "testTopic_" + mrand.Hex(8)
 		ctx := context.Background()
@@ -48,8 +48,8 @@ func TestPubSub(t *T) {
 
 func TestBatchPubSub(t *T) {
 	ctx := mtest.NewCtx()
-	mtest.SetEnv(ctx, "GCE_PROJECT", "test")
-	ps := MNew(ctx, nil)
+	ctx = mtest.SetEnv(ctx, "GCE_PROJECT", "test")
+	ctx, ps := MNew(ctx, nil)
 	mtest.Run(ctx, t, func() {
 
 		topicName := "testBatchTopic_" + mrand.Hex(8)

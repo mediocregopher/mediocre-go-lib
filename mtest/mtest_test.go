@@ -8,8 +8,8 @@ import (
 
 func TestRun(t *T) {
 	ctx := NewCtx()
-	arg := mcfg.RequiredString(ctx, "arg", "Required by this test")
-	SetEnv(ctx, "ARG", "foo")
+	ctx, arg := mcfg.RequiredString(ctx, "arg", "Required by this test")
+	ctx = SetEnv(ctx, "ARG", "foo")
 	Run(ctx, t, func() {
 		if *arg != "foo" {
 			t.Fatalf(`arg not set to "foo", is set to %q`, *arg)

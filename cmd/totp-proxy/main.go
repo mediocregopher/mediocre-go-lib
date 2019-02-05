@@ -12,6 +12,7 @@ package main
 */
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"time"
@@ -19,7 +20,6 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/m"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mcrypto"
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mhttp"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
@@ -30,27 +30,26 @@ import (
 
 func main() {
 	ctx := m.NewServiceCtx()
-	logger := mlog.From(ctx)
-	cookieName := mcfg.String(ctx, "cookie-name", "_totp_proxy", "String to use as the name for cookies")
-	cookieTimeout := mcfg.Duration(ctx, "cookie-timeout", mtime.Duration{1 * time.Hour}, "Timeout for cookies")
+	ctx, cookieName := mcfg.String(ctx, "cookie-name", "_totp_proxy", "String to use as the name for cookies")
+	ctx, cookieTimeout := mcfg.Duration(ctx, "cookie-timeout", mtime.Duration{1 * time.Hour}, "Timeout for cookies")
 
 	var userSecrets map[string]string
-	mcfg.RequiredJSON(ctx, "users", &userSecrets, "JSON object which maps usernames to their TOTP secret strings")
+	ctx = mcfg.RequiredJSON(ctx, "users", &userSecrets, "JSON object which maps usernames to their TOTP secret strings")
 
 	var secret mcrypto.Secret
-	secretStr := mcfg.String(ctx, "secret", "", "String used to sign authentication tokens. If one isn't given a new one will be generated on each startup, invalidating all previous tokens.")
-	mrun.OnStart(ctx, func(mctx.Context) error {
+	ctx, secretStr := mcfg.String(ctx, "secret", "", "String used to sign authentication tokens. If one isn't given a new one will be generated on each startup, invalidating all previous tokens.")
+	ctx = mrun.OnStart(ctx, func(context.Context) error {
 		if *secretStr == "" {
 			*secretStr = mrand.Hex(32)
 		}
-		logger.Info("generating secret")
+		mlog.Info(ctx, "generating secret")
 		secret = mcrypto.NewSecret([]byte(*secretStr))
 		return nil
 	})
 
 	proxyHandler := new(struct{ http.Handler })
-	proxyURL := mcfg.RequiredString(ctx, "dst-url", "URL to proxy requests to. Only the scheme and host should be set.")
-	mrun.OnStart(ctx, func(mctx.Context) error {
+	ctx, proxyURL := mcfg.RequiredString(ctx, "dst-url", "URL to proxy requests to. Only the scheme and host should be set.")
+	ctx = mrun.OnStart(ctx, func(context.Context) error {
 		u, err := url.Parse(*proxyURL)
 		if err != nil {
 			return err
@@ -61,8 +60,8 @@ func main() {
 
 	authHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO mlog.FromHTTP?
-		authLogger := logger.Clone()
-		authLogger.SetKV(mlog.CtxKV(r.Context()))
+		// TODO annotate this ctx
+		ctx := r.Context()
 
 		unauthorized := func() {
 			w.Header().Add("WWW-Authenticate", "Basic")
@@ -80,7 +79,7 @@ func main() {
 		}
 
 		if cookie, _ := r.Cookie(*cookieName); cookie != nil {
-			authLogger.Debug("authenticating with cookie", mlog.KV{"cookie": cookie.String()})
+			mlog.Debug(ctx, "authenticating with cookie", mlog.KV{"cookie": cookie.String()})
 			var sig mcrypto.Signature
 			if err := sig.UnmarshalText([]byte(cookie.Value)); err == nil {
 				err := mcrypto.VerifyString(secret, sig, "")
@@ -92,7 +91,7 @@ func main() {
 		}
 
 		if user, pass, ok := r.BasicAuth(); ok && pass != "" {
-			logger.Debug("authenticating with user/pass", mlog.KV{
+			mlog.Debug(ctx, "authenticating with user/pass", mlog.KV{
 				"user": user,
 				"pass": pass,
 			})
@@ -107,6 +106,6 @@ func main() {
 		unauthorized()
 	})
 
-	mhttp.MListenAndServe(ctx, authHandler)
+	ctx, _ = mhttp.MListenAndServe(ctx, authHandler)
 	m.Run(ctx)
 }

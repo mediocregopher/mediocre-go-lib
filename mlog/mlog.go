@@ -17,6 +17,7 @@ package mlog
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
@@ -204,23 +206,12 @@ func Prefix(kv KVer, prefix string) KVer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Stringer generates and returns a string.
-type Stringer interface {
-	String() string
-}
-
-// String is simply a string which implements Stringer.
-type String string
-
-func (str String) String() string {
-	return string(str)
-}
-
 // Message describes a message to be logged, after having already resolved the
 // KVer
 type Message struct {
+	context.Context
 	Level
-	Description Stringer
+	Description string
 	KVer
 }
 
@@ -253,7 +244,11 @@ func DefaultFormat(w io.Writer, msg Message) error {
 			_, err = fmt.Fprintf(w, s, args...)
 		}
 	}
-	write("~ %s -- %s", msg.Level.String(), msg.Description.String())
+	write("~ %s -- ", msg.Level.String())
+	if path := mctx.Path(msg.Context); len(path) > 0 {
+		write("(%s) ", "/"+strings.Join(path, "/"))
+	}
+	write("%s", msg.Description)
 	if msg.KVer != nil {
 		if kv := msg.KV(); len(kv) > 0 {
 			write(" --")
@@ -363,7 +358,7 @@ func (l *Logger) Log(msg Message) {
 	}
 
 	if err := l.h(msg); err != nil {
-		go l.Error("Logger.Handler returned error", merr.KV(err))
+		go l.Error(context.Background(), "Logger.Handler returned error", merr.KV(err))
 		return
 	}
 
@@ -376,36 +371,37 @@ func (l *Logger) Log(msg Message) {
 	}
 }
 
-func mkMsg(lvl Level, descr string, kvs ...KVer) Message {
+func mkMsg(ctx context.Context, lvl Level, descr string, kvs ...KVer) Message {
 	return Message{
+		Context:     ctx,
 		Level:       lvl,
-		Description: String(descr),
+		Description: descr,
 		KVer:        Merge(kvs...),
 	}
 }
 
 // Debug logs a DebugLevel message, merging the KVers together first
-func (l *Logger) Debug(descr string, kvs ...KVer) {
-	l.Log(mkMsg(DebugLevel, descr, kvs...))
+func (l *Logger) Debug(ctx context.Context, descr string, kvs ...KVer) {
+	l.Log(mkMsg(ctx, DebugLevel, descr, kvs...))
 }
 
 // Info logs a InfoLevel message, merging the KVers together first
-func (l *Logger) Info(descr string, kvs ...KVer) {
-	l.Log(mkMsg(InfoLevel, descr, kvs...))
+func (l *Logger) Info(ctx context.Context, descr string, kvs ...KVer) {
+	l.Log(mkMsg(ctx, InfoLevel, descr, kvs...))
 }
 
 // Warn logs a WarnLevel message, merging the KVers together first
-func (l *Logger) Warn(descr string, kvs ...KVer) {
-	l.Log(mkMsg(WarnLevel, descr, kvs...))
+func (l *Logger) Warn(ctx context.Context, descr string, kvs ...KVer) {
+	l.Log(mkMsg(ctx, WarnLevel, descr, kvs...))
 }
 
 // Error logs a ErrorLevel message, merging the KVers together first
-func (l *Logger) Error(descr string, kvs ...KVer) {
-	l.Log(mkMsg(ErrorLevel, descr, kvs...))
+func (l *Logger) Error(ctx context.Context, descr string, kvs ...KVer) {
+	l.Log(mkMsg(ctx, ErrorLevel, descr, kvs...))
 }
 
 // Fatal logs a FatalLevel message, merging the KVers together first. A Fatal
 // message automatically stops the process with an os.Exit(1)
-func (l *Logger) Fatal(descr string, kvs ...KVer) {
-	l.Log(mkMsg(FatalLevel, descr, kvs...))
+func (l *Logger) Fatal(ctx context.Context, descr string, kvs ...KVer) {
+	l.Log(mkMsg(ctx, FatalLevel, descr, kvs...))
 }

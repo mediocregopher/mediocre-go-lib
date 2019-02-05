@@ -12,8 +12,8 @@ import (
 // Requires datastore emulator to be running
 func TestBasic(t *T) {
 	ctx := mtest.NewCtx()
-	mtest.SetEnv(ctx, "GCE_PROJECT", "test")
-	ds := MNew(ctx, nil)
+	ctx = mtest.SetEnv(ctx, "GCE_PROJECT", "test")
+	ctx, ds := MNew(ctx, nil)
 	mtest.Run(ctx, t, func() {
 		name := mrand.Hex(8)
 		key := datastore.NameKey("testKind", name, nil)

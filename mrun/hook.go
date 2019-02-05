@@ -1,87 +1,143 @@
 package mrun
 
-import "github.com/mediocregopher/mediocre-go-lib/mctx"
+import (
+	"context"
 
-type ctxEventKeyWrap struct {
-	key interface{}
-}
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
+)
 
 // Hook describes a function which can be registered to trigger on an event via
 // the RegisterHook function.
-type Hook func(mctx.Context) error
+type Hook func(context.Context) error
+
+type ctxKey int
+
+const (
+	ctxKeyHookEls ctxKey = iota
+	ctxKeyNumChildren
+	ctxKeyNumHooks
+)
+
+type ctxKeyWrap struct {
+	key     ctxKey
+	userKey interface{}
+}
+
+// because we want Hooks to be called in the order created, taking into account
+// the creation of children and their hooks as well, we create a sequence of
+// elements which can either be a Hook or a child.
+type hookEl struct {
+	hook  Hook
+	child context.Context
+}
+
+func ctxKeys(userKey interface{}) (ctxKeyWrap, ctxKeyWrap, ctxKeyWrap) {
+	return ctxKeyWrap{
+			key:     ctxKeyHookEls,
+			userKey: userKey,
+		}, ctxKeyWrap{
+			key:     ctxKeyNumChildren,
+			userKey: userKey,
+		}, ctxKeyWrap{
+			key:     ctxKeyNumHooks,
+			userKey: userKey,
+		}
+}
+
+// getHookEls retrieves a copy of the []hookEl in the Context and possibly
+// appends more elements if more children have been added since that []hookEl
+// was created.
+//
+// this also returns the latest numChildren and numHooks values for convenience.
+func getHookEls(ctx context.Context, userKey interface{}) ([]hookEl, int, int) {
+	hookElsKey, numChildrenKey, numHooksKey := ctxKeys(userKey)
+	lastNumChildren, _ := mctx.LocalValue(ctx, numChildrenKey).(int)
+	lastNumHooks, _ := mctx.LocalValue(ctx, numHooksKey).(int)
+	lastHookEls, _ := mctx.LocalValue(ctx, hookElsKey).([]hookEl)
+	children := mctx.Children(ctx)
+
+	// plus 1 in case we wanna append something else outside this function
+	hookEls := make([]hookEl, len(lastHookEls), lastNumHooks+len(children)-lastNumChildren+1)
+	copy(hookEls, lastHookEls)
+	for _, child := range children[lastNumChildren:] {
+		hookEls = append(hookEls, hookEl{child: child})
+	}
+	return hookEls, len(children), lastNumHooks
+}
 
 // RegisterHook registers a Hook under a typed key. The Hook will be called when
 // TriggerHooks is called with that same key. Multiple Hooks can be registered
 // for the same key, and will be called sequentially when triggered.
 //
-// RegisterHook registers Hooks onto the root of the given Context. Therefore,
-// Hooks will be triggered in the global order they were registered. For
-// example: if one Hook is registered on a Context, then one is registered on a
-// child of that Context, then another one is registered on the original Context
-// again, the three Hooks will be triggered in the order: parent, child,
-// parent.
-//
 // Hooks will be called with whatever Context is passed into TriggerHooks.
-func RegisterHook(ctx mctx.Context, key interface{}, hook Hook) {
-	ctx = mctx.Root(ctx)
-	mctx.GetSetMutableValue(ctx, false, ctxEventKeyWrap{key}, func(v interface{}) interface{} {
-		hooks, _ := v.([]Hook)
-		return append(hooks, hook)
-	})
+func RegisterHook(ctx context.Context, key interface{}, hook Hook) context.Context {
+	hookEls, numChildren, numHooks := getHookEls(ctx, key)
+	hookEls = append(hookEls, hookEl{hook: hook})
+
+	hookElsKey, numChildrenKey, numHooksKey := ctxKeys(key)
+	ctx = mctx.WithLocalValue(ctx, hookElsKey, hookEls)
+	ctx = mctx.WithLocalValue(ctx, numChildrenKey, numChildren)
+	ctx = mctx.WithLocalValue(ctx, numHooksKey, numHooks+1)
+	return ctx
 }
 
-func triggerHooks(ctx mctx.Context, key interface{}, next func([]Hook) (Hook, []Hook)) error {
-	rootCtx := mctx.Root(ctx)
-	var err error
-	mctx.GetSetMutableValue(rootCtx, false, ctxEventKeyWrap{key}, func(i interface{}) interface{} {
-		var hook Hook
-		hooks, _ := i.([]Hook)
-		for {
-			if len(hooks) == 0 {
-				break
-			}
-			hook, hooks = next(hooks)
-
-			// err here is the var outside GetSetMutableValue, we lift it out
-			if err = hook(ctx); err != nil {
-				break
-			}
+func triggerHooks(ctx context.Context, userKey interface{}, next func([]hookEl) (hookEl, []hookEl)) error {
+	hookEls, _, _ := getHookEls(ctx, userKey)
+	var hookEl hookEl
+	for {
+		if len(hookEls) == 0 {
+			break
 		}
-
-		// if there was an error then we want to keep all the hooks which
-		// weren't called. If there wasn't we want to reset the value to nil so
-		// the slice doesn't grow unbounded.
-		if err != nil {
-			return hooks
+		hookEl, hookEls = next(hookEls)
+		if hookEl.child != nil {
+			if err := triggerHooks(hookEl.child, userKey, next); err != nil {
+				return err
+			}
+		} else if err := hookEl.hook(ctx); err != nil {
+			return err
 		}
-		return nil
-	})
-	return err
+	}
+	return nil
 }
 
-// TriggerHooks causes all Hooks registered with RegisterHook under the given
-// key to be called in the global order they were registered, using the given
-// Context as their input parameter. The given Context does not need to be the
-// root Context (see RegisterHook).
+// TriggerHooks causes all Hooks registered with RegisterHook on the Context
+// (and its predecessors) under the given key to be called in the order they
+// were registered.
 //
 // If any Hook returns an error no further Hooks will be called and that error
 // will be returned.
 //
-// TriggerHooks causes all Hooks which were called to be de-registered. If an
-// error caused execution to stop prematurely then any Hooks which were not
-// called will remain registered.
-func TriggerHooks(ctx mctx.Context, key interface{}) error {
-	return triggerHooks(ctx, key, func(hooks []Hook) (Hook, []Hook) {
-		return hooks[0], hooks[1:]
+// If the Context has children (see the mctx package), and those children have
+// Hooks registered under this key, then their Hooks will be called in the
+// expected order. For example:
+//
+//	// parent context has hookA registered
+//	ctx := context.Background()
+//	ctx = RegisterHook(ctx, 0, hookA)
+//
+//	// child context has hookB registered
+//	childCtx := mctx.NewChild(ctx, "child")
+//	childCtx = RegisterHook(childCtx, 0, hookB)
+//	ctx = mctx.WithChild(ctx, childCtx) // needed to link childCtx to ctx
+//
+//	// parent context has another Hook, hookC, registered
+//	ctx = RegisterHook(ctx, 0, hookC)
+//
+//	// The Hooks will be triggered in the order: hookA, hookB, then hookC
+//	err := TriggerHooks(ctx, 0)
+//
+func TriggerHooks(ctx context.Context, key interface{}) error {
+	return triggerHooks(ctx, key, func(hookEls []hookEl) (hookEl, []hookEl) {
+		return hookEls[0], hookEls[1:]
 	})
 }
 
 // TriggerHooksReverse is the same as TriggerHooks except that registered Hooks
 // are called in the reverse order in which they were registered.
-func TriggerHooksReverse(ctx mctx.Context, key interface{}) error {
-	return triggerHooks(ctx, key, func(hooks []Hook) (Hook, []Hook) {
-		last := len(hooks) - 1
-		return hooks[last], hooks[:last]
+func TriggerHooksReverse(ctx context.Context, key interface{}) error {
+	return triggerHooks(ctx, key, func(hookEls []hookEl) (hookEl, []hookEl) {
+		last := len(hookEls) - 1
+		return hookEls[last], hookEls[:last]
 	})
 }
 
@@ -101,24 +157,24 @@ const (
 // server) will want to use the Hook only to initialize, and spawn off a
 // go-routine to do their actual work. Long-lived tasks should set themselves up
 // to stop on the stop event (see OnStop).
-func OnStart(ctx mctx.Context, hook Hook) {
-	RegisterHook(ctx, start, hook)
+func OnStart(ctx context.Context, hook Hook) context.Context {
+	return RegisterHook(ctx, start, hook)
 }
 
 // Start runs all Hooks registered using OnStart. This is a special case of
 // TriggerHooks.
-func Start(ctx mctx.Context) error {
+func Start(ctx context.Context) error {
 	return TriggerHooks(ctx, start)
 }
 
 // OnStop registers the given Hook to run when Stop is called. This is a special
 // case of RegisterHook.
-func OnStop(ctx mctx.Context, hook Hook) {
-	RegisterHook(ctx, stop, hook)
+func OnStop(ctx context.Context, hook Hook) context.Context {
+	return RegisterHook(ctx, stop, hook)
 }
 
 // Stop runs all Hooks registered using OnStop in the reverse order in which
 // they were registered. This is a special case of TriggerHooks.
-func Stop(ctx mctx.Context) error {
+func Stop(ctx context.Context) error {
 	return TriggerHooksReverse(ctx, stop)
 }

@@ -5,11 +5,11 @@
 package m
 
 import (
+	"context"
 	"os"
 	"os/signal"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
@@ -32,20 +32,19 @@ func CfgSource() mcfg.Source {
 // debug information about the running process can be accessed.
 //
 // TODO set up the debug endpoint.
-func NewServiceCtx() mctx.Context {
-	ctx := mctx.New()
+func NewServiceCtx() context.Context {
+	ctx := context.Background()
 
 	// set up log level handling
-	logLevelStr := mcfg.String(ctx, "log-level", "info", "Maximum log level which will be printed.")
-	mrun.OnStart(ctx, func(mctx.Context) error {
+	logger := mlog.NewLogger()
+	ctx = mlog.Set(ctx, logger)
+	ctx, logLevelStr := mcfg.String(ctx, "log-level", "info", "Maximum log level which will be printed.")
+	ctx = mrun.OnStart(ctx, func(context.Context) error {
 		logLevel := mlog.LevelFromString(*logLevelStr)
 		if logLevel == nil {
 			return merr.New("invalid log level", "log-level", *logLevelStr)
 		}
-		mlog.CtxSetAll(ctx, func(_ mctx.Context, logger *mlog.Logger) *mlog.Logger {
-			logger.SetMaxLevel(logLevel)
-			return logger
-		})
+		logger.SetMaxLevel(logLevel)
 		return nil
 	})
 
@@ -56,23 +55,23 @@ func NewServiceCtx() mctx.Context {
 // start event, waiting for an interrupt, and then triggering the stop event.
 // Run will block until the stop event is done. If any errors are encountered a
 // fatal is thrown.
-func Run(ctx mctx.Context) {
+func Run(ctx context.Context) {
 	log := mlog.From(ctx)
 	if err := mcfg.Populate(ctx, CfgSource()); err != nil {
-		log.Fatal("error populating configuration", merr.KV(err))
+		log.Fatal(ctx, "error populating configuration", merr.KV(err))
 	} else if err := mrun.Start(ctx); err != nil {
-		log.Fatal("error triggering start event", merr.KV(err))
+		log.Fatal(ctx, "error triggering start event", merr.KV(err))
 	}
 
 	{
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt)
 		s := <-ch
-		log.Info("signal received, stopping", mlog.KV{"signal": s})
+		log.Info(ctx, "signal received, stopping", mlog.KV{"signal": s})
 	}
 
 	if err := mrun.Stop(ctx); err != nil {
-		log.Fatal("error triggering stop event", merr.KV(err))
+		log.Fatal(ctx, "error triggering stop event", merr.KV(err))
 	}
-	log.Info("exiting process")
+	log.Info(ctx, "exiting process")
 }

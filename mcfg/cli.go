@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
@@ -108,7 +109,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 
 		pvs = append(pvs, ParamValue{
 			Name:  p.Name,
-			Path:  p.Path,
+			Path:  mctx.Path(p.Context),
 			Value: p.fuzzyParse(pvStrVal),
 		})
 
@@ -127,7 +128,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 func (cli SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 	m := map[string]Param{}
 	for _, p := range params {
-		key := strings.Join(append(p.Path, p.Name), cliKeyJoin)
+		key := strings.Join(append(mctx.Path(p.Context), p.Name), cliKeyJoin)
 		m[cliKeyPrefix+key] = p
 	}
 	return m, nil

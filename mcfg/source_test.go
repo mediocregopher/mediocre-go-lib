@@ -1,6 +1,7 @@
 package mcfg
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	. "testing"
@@ -16,24 +17,35 @@ import (
 // all the code they share
 
 type srcCommonState struct {
-	ctx       mctx.Context
-	availCtxs []mctx.Context
-	expPVs    []ParamValue
+	// availCtxs get updated in place as the run goes on, and mkRoot is used to
+	// create the latest version of the root context based on them
+	availCtxs []*context.Context
+	mkRoot    func() context.Context
 
+	expPVs []ParamValue
 	// each specific test should wrap this to add the Source itself
 }
 
 func newSrcCommonState() srcCommonState {
 	var scs srcCommonState
-	scs.ctx = mctx.New()
 	{
-		a := mctx.ChildOf(scs.ctx, "a")
-		b := mctx.ChildOf(scs.ctx, "b")
-		c := mctx.ChildOf(scs.ctx, "c")
-		ab := mctx.ChildOf(a, "b")
-		bc := mctx.ChildOf(b, "c")
-		abc := mctx.ChildOf(ab, "c")
-		scs.availCtxs = []mctx.Context{scs.ctx, a, b, c, ab, bc, abc}
+		root := context.Background()
+		a := mctx.NewChild(root, "a")
+		b := mctx.NewChild(root, "b")
+		c := mctx.NewChild(root, "c")
+		ab := mctx.NewChild(a, "b")
+		bc := mctx.NewChild(b, "c")
+		abc := mctx.NewChild(ab, "c")
+		scs.availCtxs = []*context.Context{&root, &a, &b, &c, &ab, &bc, &abc}
+		scs.mkRoot = func() context.Context {
+			ab := mctx.WithChild(ab, abc)
+			a := mctx.WithChild(a, ab)
+			b := mctx.WithChild(b, bc)
+			root := mctx.WithChild(root, a)
+			root = mctx.WithChild(root, b)
+			root = mctx.WithChild(root, c)
+			return root
+		}
 	}
 	return scs
 }
@@ -57,10 +69,9 @@ func (scs srcCommonState) next() srcCommonParams {
 	}
 
 	p.availCtxI = mrand.Intn(len(scs.availCtxs))
-	thisCtx := scs.availCtxs[p.availCtxI]
-	p.path = mctx.Path(thisCtx)
+	p.path = mctx.Path(*scs.availCtxs[p.availCtxI])
 
-	p.isBool = mrand.Intn(2) == 0
+	p.isBool = mrand.Intn(8) == 0
 	if !p.isBool {
 		p.nonBoolType = mrand.Element([]string{
 			"int",
@@ -105,11 +116,11 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 		// the Sources don't actually care about the other fields of Param,
 		// those are only used by Populate once it has all ParamValues together
 	}
-	MustAdd(thisCtx, ctxP)
-	ctxP = get(thisCtx).params[p.name] // get it back out to get any added fields
+	*thisCtx = MustAdd(*thisCtx, ctxP)
+	ctxP, _ = getParam(*thisCtx, ctxP.Name) // get it back out to get any added fields
 
 	if !p.unset {
-		pv := ParamValue{Name: ctxP.Name, Path: ctxP.Path}
+		pv := ParamValue{Name: ctxP.Name, Path: mctx.Path(ctxP.Context)}
 		if p.isBool {
 			pv.Value = json.RawMessage("true")
 		} else {
@@ -131,7 +142,8 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 // given a Source asserts that it's Parse method returns the expected
 // ParamValues
 func (scs srcCommonState) assert(s Source) error {
-	gotPVs, err := s.Parse(collectParams(scs.ctx))
+	root := scs.mkRoot()
+	gotPVs, err := s.Parse(collectParams(root))
 	if err != nil {
 		return err
 	}
@@ -142,10 +154,10 @@ func (scs srcCommonState) assert(s Source) error {
 }
 
 func TestSources(t *T) {
-	ctx := mctx.New()
-	a := RequiredInt(ctx, "a", "")
-	b := RequiredInt(ctx, "b", "")
-	c := RequiredInt(ctx, "c", "")
+	ctx := context.Background()
+	ctx, a := RequiredInt(ctx, "a", "")
+	ctx, b := RequiredInt(ctx, "b", "")
+	ctx, c := RequiredInt(ctx, "c", "")
 
 	err := Populate(ctx, Sources{
 		SourceCLI{Args: []string{"--a=1", "--b=666"}},
@@ -160,11 +172,12 @@ func TestSources(t *T) {
 }
 
 func TestSourceParamValues(t *T) {
-	ctx := mctx.New()
-	a := RequiredInt(ctx, "a", "")
-	foo := mctx.ChildOf(ctx, "foo")
-	b := RequiredString(foo, "b", "")
-	c := Bool(foo, "c", "")
+	ctx := context.Background()
+	ctx, a := RequiredInt(ctx, "a", "")
+	foo := mctx.NewChild(ctx, "foo")
+	foo, b := RequiredString(foo, "b", "")
+	foo, c := Bool(foo, "c", "")
+	ctx = mctx.WithChild(ctx, foo)
 
 	err := Populate(ctx, ParamValues{
 		{Name: "a", Value: json.RawMessage(`4`)},
