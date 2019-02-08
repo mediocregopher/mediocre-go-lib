@@ -218,17 +218,26 @@ func LocalValue(ctx context.Context, key interface{}) interface{} {
 	}
 }
 
+func localValuesIter(ctx context.Context, callback func(key, val interface{})) {
+	m := map[interface{}]struct{}{}
+	lv, _ := ctx.Value(localValsKey(0)).(*localVal)
+	for {
+		if lv == nil {
+			return
+		} else if _, ok := m[lv.key]; !ok {
+			callback(lv.key, lv.val)
+			m[lv.key] = struct{}{}
+		}
+		lv = lv.prev
+	}
+}
+
 // LocalValues returns all key/value pairs which have been set on the Context
 // via WithLocalValue.
 func LocalValues(ctx context.Context) map[interface{}]interface{} {
 	m := map[interface{}]interface{}{}
-	lv, _ := ctx.Value(localValsKey(0)).(*localVal)
-	for {
-		if lv == nil {
-			return m
-		} else if _, ok := m[lv.key]; !ok {
-			m[lv.key] = lv.val
-		}
-		lv = lv.prev
-	}
+	localValuesIter(ctx, func(key, val interface{}) {
+		m[key] = val
+	})
+	return m
 }
