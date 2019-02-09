@@ -1,6 +1,7 @@
 package mcfg
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -58,7 +59,7 @@ func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 	for _, kv := range kvs {
 		split := strings.SplitN(kv, "=", 2)
 		if len(split) != 2 {
-			return nil, merr.New("malformed environment key/value pair", "kv", kv)
+			return nil, merr.New(context.Background(), "malformed environment key/value pair", "kv", kv)
 		}
 		k, v := split[0], split[1]
 		if p, ok := pM[k]; ok {

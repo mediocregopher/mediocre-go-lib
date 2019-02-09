@@ -110,7 +110,7 @@ func populate(params []Param, src Source) error {
 		if !p.Required {
 			continue
 		} else if _, ok := pvM[hash]; !ok {
-			return merr.New("required parameter is not set",
+			return merr.New(p.Context, "required parameter is not set",
 				"param", paramFullName(mctx.Path(p.Context), p.Name))
 		}
 	}

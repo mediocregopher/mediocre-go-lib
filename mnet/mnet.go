@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
-	"github.com/mediocregopher/mediocre-go-lib/merr"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-// MListener is returned by MListen and simply wraps a net.Listener.
-type MListener struct {
+// Listener is returned by WithListen and simply wraps a net.Listener.
+type Listener struct {
 	net.Listener
 	ctx context.Context
 
@@ -23,13 +23,13 @@ type MListener struct {
 	NoCloseOnStop bool
 }
 
-// MListen returns an MListener which will be initialized when the start event
-// is triggered on the returned Context (see mrun.Start), and closed when the
-// stop event is triggered on the returned Context (see mrun.Stop).
+// WithListener returns a Listener which will be initialized when the start
+// event is triggered on the returned Context (see mrun.Start), and closed when
+// the stop event is triggered on the returned Context (see mrun.Stop).
 //
 // network defaults to "tcp" if empty. defaultAddr defaults to ":0" if empty,
 // and will be configurable via mcfg.
-func MListen(ctx context.Context, network, defaultAddr string) (context.Context, *MListener) {
+func WithListener(ctx context.Context, network, defaultAddr string) (context.Context, *Listener) {
 	if network == "" {
 		network = "tcp"
 	}
@@ -37,59 +37,52 @@ func MListen(ctx context.Context, network, defaultAddr string) (context.Context,
 		defaultAddr = ":0"
 	}
 
-	l := new(MListener)
+	l := &Listener{
+		ctx: mctx.NewChild(ctx, "net"),
+	}
 
-	// TODO the equivalent functionality as here will be added with annotations
-	//l.log = mlog.From(ctx)
-	//l.log.SetKV(l)
-
-	ctx, addr := mcfg.String(ctx, "listen-addr", defaultAddr, strings.ToUpper(network)+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
-	ctx = mrun.OnStart(ctx, func(context.Context) error {
+	var addr *string
+	l.ctx, addr = mcfg.WithString(l.ctx, "listen-addr", defaultAddr, strings.ToUpper(network)+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+	l.ctx = mrun.WithStartHook(l.ctx, func(context.Context) error {
 		var err error
 		if l.Listener, err = net.Listen(network, *addr); err != nil {
 			return err
 		}
-		mlog.Info(l.ctx, "listening")
+		l.ctx = mctx.Annotate(l.ctx, "addr", l.Addr().String())
+		mlog.Info("listening", l.ctx)
 		return nil
 	})
 
 	// TODO track connections and wait for them to complete before shutting
 	// down?
-	ctx = mrun.OnStop(ctx, func(context.Context) error {
+	l.ctx = mrun.WithStopHook(l.ctx, func(context.Context) error {
 		if l.NoCloseOnStop {
 			return nil
 		}
-		mlog.Info(l.ctx, "stopping listener")
+		mlog.Info("stopping listener", l.ctx)
 		return l.Close()
 	})
 
-	l.ctx = ctx
-	return ctx, l
+	return mctx.WithChild(ctx, l.ctx), l
 }
 
 // Accept wraps a call to Accept on the underlying net.Listener, providing debug
 // logging.
-func (l *MListener) Accept() (net.Conn, error) {
+func (l *Listener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
 		return conn, err
 	}
-	mlog.Debug(l.ctx, "connection accepted", mlog.KV{"remoteAddr": conn.RemoteAddr()})
+	mlog.Debug("connection accepted",
+		mctx.Annotate(l.ctx, "remoteAddr", conn.RemoteAddr().String()))
 	return conn, nil
 }
 
 // Close wraps a call to Close on the underlying net.Listener, providing debug
 // logging.
-func (l *MListener) Close() error {
-	mlog.Debug(l.ctx, "listener closing")
-	err := l.Listener.Close()
-	mlog.Debug(l.ctx, "listener closed", merr.KV(err))
-	return err
-}
-
-// KV implements the mlog.KVer interface.
-func (l *MListener) KV() map[string]interface{} {
-	return map[string]interface{}{"addr": l.Addr().String()}
+func (l *Listener) Close() error {
+	mlog.Info("listener closing", l.ctx)
+	return l.Listener.Close()
 }
 
 ////////////////////////////////////////////////////////////////////////////////

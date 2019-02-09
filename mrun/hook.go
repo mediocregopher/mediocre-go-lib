@@ -7,7 +7,7 @@ import (
 )
 
 // Hook describes a function which can be registered to trigger on an event via
-// the RegisterHook function.
+// the WithHook function.
 type Hook func(context.Context) error
 
 type ctxKey int
@@ -65,12 +65,12 @@ func getHookEls(ctx context.Context, userKey interface{}) ([]hookEl, int, int) {
 	return hookEls, len(children), lastNumHooks
 }
 
-// RegisterHook registers a Hook under a typed key. The Hook will be called when
+// WithHook registers a Hook under a typed key. The Hook will be called when
 // TriggerHooks is called with that same key. Multiple Hooks can be registered
 // for the same key, and will be called sequentially when triggered.
 //
 // Hooks will be called with whatever Context is passed into TriggerHooks.
-func RegisterHook(ctx context.Context, key interface{}, hook Hook) context.Context {
+func WithHook(ctx context.Context, key interface{}, hook Hook) context.Context {
 	hookEls, numChildren, numHooks := getHookEls(ctx, key)
 	hookEls = append(hookEls, hookEl{hook: hook})
 
@@ -100,9 +100,9 @@ func triggerHooks(ctx context.Context, userKey interface{}, next func([]hookEl) 
 	return nil
 }
 
-// TriggerHooks causes all Hooks registered with RegisterHook on the Context
-// (and its predecessors) under the given key to be called in the order they
-// were registered.
+// TriggerHooks causes all Hooks registered with WithHook on the Context (and
+// its predecessors) under the given key to be called in the order they were
+// registered.
 //
 // If any Hook returns an error no further Hooks will be called and that error
 // will be returned.
@@ -113,15 +113,15 @@ func triggerHooks(ctx context.Context, userKey interface{}, next func([]hookEl) 
 //
 //	// parent context has hookA registered
 //	ctx := context.Background()
-//	ctx = RegisterHook(ctx, 0, hookA)
+//	ctx = WithHook(ctx, 0, hookA)
 //
 //	// child context has hookB registered
 //	childCtx := mctx.NewChild(ctx, "child")
-//	childCtx = RegisterHook(childCtx, 0, hookB)
+//	childCtx = WithHook(childCtx, 0, hookB)
 //	ctx = mctx.WithChild(ctx, childCtx) // needed to link childCtx to ctx
 //
 //	// parent context has another Hook, hookC, registered
-//	ctx = RegisterHook(ctx, 0, hookC)
+//	ctx = WithHook(ctx, 0, hookC)
 //
 //	// The Hooks will be triggered in the order: hookA, hookB, then hookC
 //	err := TriggerHooks(ctx, 0)
@@ -148,33 +148,33 @@ const (
 	stop
 )
 
-// OnStart registers the given Hook to run when Start is called. This is a
-// special case of RegisterHook.
+// WithStartHook registers the given Hook to run when Start is called. This is a
+// special case of WithHook.
 //
 // As a convention Hooks running on the start event should block only as long as
 // it takes to ensure that whatever is running can do so successfully. For
 // short-lived tasks this isn't a problem, but long-lived tasks (e.g. a web
 // server) will want to use the Hook only to initialize, and spawn off a
 // go-routine to do their actual work. Long-lived tasks should set themselves up
-// to stop on the stop event (see OnStop).
-func OnStart(ctx context.Context, hook Hook) context.Context {
-	return RegisterHook(ctx, start, hook)
+// to stop on the stop event (see WithStopHook).
+func WithStartHook(ctx context.Context, hook Hook) context.Context {
+	return WithHook(ctx, start, hook)
 }
 
-// Start runs all Hooks registered using OnStart. This is a special case of
-// TriggerHooks.
+// Start runs all Hooks registered using WithStartHook. This is a special case
+// of TriggerHooks.
 func Start(ctx context.Context) error {
 	return TriggerHooks(ctx, start)
 }
 
-// OnStop registers the given Hook to run when Stop is called. This is a special
-// case of RegisterHook.
-func OnStop(ctx context.Context, hook Hook) context.Context {
-	return RegisterHook(ctx, stop, hook)
+// WithStopHook registers the given Hook to run when Stop is called. This is a
+// special case of WithHook.
+func WithStopHook(ctx context.Context, hook Hook) context.Context {
+	return WithHook(ctx, stop, hook)
 }
 
-// Stop runs all Hooks registered using OnStop in the reverse order in which
-// they were registered. This is a special case of TriggerHooks.
+// Stop runs all Hooks registered using WithStopHook in the reverse order in
+// which they were registered. This is a special case of TriggerHooks.
 func Stop(ctx context.Context) error {
 	return TriggerHooksReverse(ctx, stop)
 }

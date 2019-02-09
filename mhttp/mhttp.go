@@ -17,13 +17,13 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-// MServer is returned by MListenAndServe and simply wraps an *http.Server.
-type MServer struct {
+// Server is returned by WithListeningServer and simply wraps an *http.Server.
+type Server struct {
 	*http.Server
 	ctx context.Context
 }
 
-// MListenAndServe returns an http.Server which will be initialized and have
+// WithListeningServer returns a *Server which will be initialized and have
 // ListenAndServe called on it (asynchronously) when the start event is
 // triggered on the returned Context (see mrun.Start). The Server will have
 // Shutdown called on it when the stop event is triggered on the returned
@@ -31,25 +31,22 @@ type MServer struct {
 //
 // This function automatically handles setting up configuration parameters via
 // mcfg. The default listen address is ":0".
-func MListenAndServe(ctx context.Context, h http.Handler) (context.Context, *MServer) {
-	srv := &MServer{
+func WithListeningServer(ctx context.Context, h http.Handler) (context.Context, *Server) {
+	srv := &Server{
 		Server: &http.Server{Handler: h},
 		ctx:    mctx.NewChild(ctx, "http"),
 	}
 
-	var listener *mnet.MListener
-	srv.ctx, listener = mnet.MListen(srv.ctx, "tcp", "")
+	var listener *mnet.Listener
+	srv.ctx, listener = mnet.WithListener(srv.ctx, "tcp", "")
 	listener.NoCloseOnStop = true // http.Server.Shutdown will do this
 
-	// TODO the equivalent functionality as here will be added with annotations
-	//logger := mlog.From(ctx)
-	//logger.SetKV(listener)
-
-	srv.ctx = mrun.OnStart(srv.ctx, func(context.Context) error {
+	srv.ctx = mrun.WithStartHook(srv.ctx, func(context.Context) error {
 		srv.Addr = listener.Addr().String()
-		srv.ctx = mrun.Thread(srv.ctx, func() error {
-			if err := srv.Serve(listener); err != http.ErrServerClosed {
-				mlog.Error(srv.ctx, "error serving listener", merr.KV(err))
+		srv.ctx = mrun.WithThread(srv.ctx, func() error {
+			mlog.Info("serving requests", srv.ctx)
+			if err := srv.Serve(listener); !merr.Equal(err, http.ErrServerClosed) {
+				mlog.Error("error serving listener", srv.ctx, merr.Context(err))
 				return err
 			}
 			return nil
@@ -57,8 +54,8 @@ func MListenAndServe(ctx context.Context, h http.Handler) (context.Context, *MSe
 		return nil
 	})
 
-	srv.ctx = mrun.OnStop(srv.ctx, func(innerCtx context.Context) error {
-		mlog.Info(srv.ctx, "shutting down server")
+	srv.ctx = mrun.WithStopHook(srv.ctx, func(innerCtx context.Context) error {
+		mlog.Info("shutting down server", srv.ctx)
 		if err := srv.Shutdown(innerCtx); err != nil {
 			return err
 		}

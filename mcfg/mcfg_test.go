@@ -11,10 +11,10 @@ import (
 func TestPopulate(t *T) {
 	{
 		ctx := context.Background()
-		ctx, a := Int(ctx, "a", 0, "")
+		ctx, a := WithInt(ctx, "a", 0, "")
 		ctxChild := mctx.NewChild(ctx, "foo")
-		ctxChild, b := Int(ctxChild, "b", 0, "")
-		ctxChild, c := Int(ctxChild, "c", 0, "")
+		ctxChild, b := WithInt(ctxChild, "b", 0, "")
+		ctxChild, c := WithInt(ctxChild, "c", 0, "")
 		ctx = mctx.WithChild(ctx, ctxChild)
 
 		err := Populate(ctx, SourceCLI{
@@ -28,10 +28,10 @@ func TestPopulate(t *T) {
 
 	{ // test that required params are enforced
 		ctx := context.Background()
-		ctx, a := Int(ctx, "a", 0, "")
+		ctx, a := WithInt(ctx, "a", 0, "")
 		ctxChild := mctx.NewChild(ctx, "foo")
-		ctxChild, b := Int(ctxChild, "b", 0, "")
-		ctxChild, c := RequiredInt(ctxChild, "c", "")
+		ctxChild, b := WithInt(ctxChild, "b", 0, "")
+		ctxChild, c := WithRequiredInt(ctxChild, "c", "")
 		ctx = mctx.WithChild(ctx, ctxChild)
 
 		err := Populate(ctx, SourceCLI{

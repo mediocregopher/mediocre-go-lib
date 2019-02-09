@@ -12,18 +12,18 @@ import (
 
 type envCtxKey int
 
-// NewCtx creates and returns a root Context suitable for testing.
-func NewCtx() context.Context {
+// Context creates and returns a root Context suitable for testing.
+func Context() context.Context {
 	ctx := context.Background()
 	logger := mlog.NewLogger()
 	logger.SetMaxLevel(mlog.DebugLevel)
-	return mlog.Set(ctx, logger)
+	return mlog.WithLogger(ctx, logger)
 }
 
-// SetEnv sets the given environment variable on the given Context, such that it
-// will be used as if it was a real environment variable when the Run function
-// from this package is called.
-func SetEnv(ctx context.Context, key, val string) context.Context {
+// WithEnv sets the given environment variable on the given Context, such that
+// it will be used as if it was a real environment variable when the Run
+// function from this package is called.
+func WithEnv(ctx context.Context, key, val string) context.Context {
 	prevEnv, _ := ctx.Value(envCtxKey(0)).([][2]string)
 	env := make([][2]string, len(prevEnv), len(prevEnv)+1)
 	copy(env, prevEnv)
@@ -33,7 +33,7 @@ func SetEnv(ctx context.Context, key, val string) context.Context {
 
 // Run performs the following using the given Context:
 //
-// - Calls mcfg.Populate using any variables set by SetEnv.
+// - Calls mcfg.Populate using any variables set by WithEnv.
 //
 // - Calls mrun.Start
 //
@@ -42,7 +42,7 @@ func SetEnv(ctx context.Context, key, val string) context.Context {
 // - Calls mrun.Stop
 //
 // The intention is that Run is used within a test on a Context created via
-// NewCtx, after any setup functions have been called (e.g. mnet.MListen).
+// NewCtx, after any setup functions have been called (e.g. mnet.WithListener).
 func Run(ctx context.Context, t *testing.T, body func()) {
 	envTups, _ := ctx.Value(envCtxKey(0)).([][2]string)
 	env := make([]string, 0, len(envTups))

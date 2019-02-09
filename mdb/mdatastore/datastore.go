@@ -22,39 +22,33 @@ type Datastore struct {
 	ctx context.Context
 }
 
-// MNew returns a Datastore instance which will be initialized and configured
-// when the start event is triggered on the returned Context (see mrun.Start).
-// The Datastore instance will have Close called on it when the stop event is
-// triggered on the returned Context (see mrun.Stop).
+// WithDatastore returns a Datastore instance which will be initialized and
+// configured when the start event is triggered on the returned Context (see
+// mrun.Start). The Datastore instance will have Close called on it when the
+// stop event is triggered on the returned Context (see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
-func MNew(ctx context.Context, gce *mdb.GCE) (context.Context, *Datastore) {
+func WithDatastore(parent context.Context, gce *mdb.GCE) (context.Context, *Datastore) {
+	ctx := mctx.NewChild(parent, "datastore")
 	if gce == nil {
-		ctx, gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.WithGCE(ctx, "")
 	}
 
 	ds := &Datastore{
 		gce: gce,
-		ctx: mctx.NewChild(ctx, "datastore"),
 	}
 
-	// TODO the equivalent functionality as here will be added with annotations
-	// ds.log.SetKV(ds)
-
-	ds.ctx = mrun.OnStart(ds.ctx, func(innerCtx context.Context) error {
-		mlog.Info(ds.ctx, "connecting to datastore")
+	ctx = mrun.WithStartHook(ctx, func(innerCtx context.Context) error {
+		ds.ctx = mctx.MergeAnnotations(ds.ctx, ds.gce.Context())
+		mlog.Info("connecting to datastore", ds.ctx)
 		var err error
 		ds.Client, err = datastore.NewClient(innerCtx, ds.gce.Project, ds.gce.ClientOptions()...)
-		return merr.WithKV(err, ds.KV())
+		return merr.Wrap(ds.ctx, err)
 	})
-	ds.ctx = mrun.OnStop(ds.ctx, func(context.Context) error {
+	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return ds.Client.Close()
 	})
-	return mctx.WithChild(ctx, ds.ctx), ds
-}
-
-// KV implements the mlog.KVer interface.
-func (ds *Datastore) KV() map[string]interface{} {
-	return ds.gce.KV()
+	ds.ctx = ctx
+	return mctx.WithChild(parent, ctx), ds
 }

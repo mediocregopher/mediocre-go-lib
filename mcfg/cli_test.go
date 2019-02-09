@@ -15,11 +15,11 @@ import (
 
 func TestSourceCLIHelp(t *T) {
 	ctx := context.Background()
-	ctx, _ = Int(ctx, "foo", 5, "Test int param  ") // trailing space should be trimmed
-	ctx, _ = Bool(ctx, "bar", "Test bool param.")
-	ctx, _ = String(ctx, "baz", "baz", "Test string param")
-	ctx, _ = RequiredString(ctx, "baz2", "")
-	ctx, _ = RequiredString(ctx, "baz3", "")
+	ctx, _ = WithInt(ctx, "foo", 5, "Test int param  ") // trailing space should be trimmed
+	ctx, _ = WithBool(ctx, "bar", "Test bool param.")
+	ctx, _ = WithString(ctx, "baz", "baz", "Test string param")
+	ctx, _ = WithRequiredString(ctx, "baz2", "")
+	ctx, _ = WithRequiredString(ctx, "baz3", "")
 	src := SourceCLI{}
 
 	buf := new(bytes.Buffer)

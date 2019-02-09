@@ -4,7 +4,6 @@ package mpubsub
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -41,45 +40,40 @@ type PubSub struct {
 	ctx context.Context
 }
 
-// MNew returns a PubSub instance which will be initialized and configured when
-// the start event is triggered on the returned Context (see mrun.Start). The
-// PubSub instance will have Close called on it when the stop event is triggered
-// on the returned Context(see mrun.Stop).
+// WithPubSub returns a PubSub instance which will be initialized and configured
+// when the start event is triggered on the returned Context (see mrun.Start).
+// The PubSub instance will have Close called on it when the stop event is
+// triggered on the returned Context(see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
-func MNew(ctx context.Context, gce *mdb.GCE) (context.Context, *PubSub) {
+func WithPubSub(parent context.Context, gce *mdb.GCE) (context.Context, *PubSub) {
+	ctx := mctx.NewChild(parent, "pubsub")
 	if gce == nil {
-		ctx, gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.WithGCE(ctx, "")
 	}
 
 	ps := &PubSub{
 		gce: gce,
-		ctx: mctx.NewChild(ctx, "pubsub"),
 	}
 
-	// TODO the equivalent functionality as here will be added with annotations
-	// ps.log.SetKV(ps)
-
-	ps.ctx = mrun.OnStart(ps.ctx, func(innerCtx context.Context) error {
-		mlog.Info(ps.ctx, "connecting to pubsub")
+	ctx = mrun.WithStartHook(ctx, func(innerCtx context.Context) error {
+		ps.ctx = mctx.MergeAnnotations(ps.ctx, ps.gce.Context())
+		mlog.Info("connecting to pubsub", ps.ctx)
 		var err error
 		ps.Client, err = pubsub.NewClient(innerCtx, ps.gce.Project, ps.gce.ClientOptions()...)
-		return merr.WithKV(err, ps.KV())
+		return merr.Wrap(ps.ctx, err)
 	})
-	ps.ctx = mrun.OnStop(ps.ctx, func(context.Context) error {
+	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return ps.Client.Close()
 	})
-	return mctx.WithChild(ctx, ps.ctx), ps
-}
-
-// KV implements the mlog.KVer interface
-func (ps *PubSub) KV() map[string]interface{} {
-	return ps.gce.KV()
+	ps.ctx = ctx
+	return mctx.WithChild(parent, ctx), ps
 }
 
 // Topic provides methods around a particular topic in PubSub
 type Topic struct {
+	ctx   context.Context
 	ps    *PubSub
 	topic *pubsub.Topic
 	name  string
@@ -88,6 +82,7 @@ type Topic struct {
 // Topic returns, after potentially creating, a topic of the given name
 func (ps *PubSub) Topic(ctx context.Context, name string, create bool) (*Topic, error) {
 	t := &Topic{
+		ctx:  mctx.Annotate(ps.ctx, "topicName", name),
 		ps:   ps,
 		name: name,
 	}
@@ -98,38 +93,31 @@ func (ps *PubSub) Topic(ctx context.Context, name string, create bool) (*Topic, 
 		if isErrAlreadyExists(err) {
 			t.topic = ps.Client.Topic(name)
 		} else if err != nil {
-			return nil, merr.WithKV(err, t.KV())
+			return nil, merr.Wrap(ctx, merr.Wrap(t.ctx, err))
 		}
 	} else {
 		t.topic = ps.Client.Topic(name)
-		if exists, err := t.topic.Exists(ctx); err != nil {
-			return nil, merr.WithKV(err, t.KV())
+		if exists, err := t.topic.Exists(t.ctx); err != nil {
+			return nil, merr.Wrap(ctx, merr.Wrap(t.ctx, err))
 		} else if !exists {
-			err := merr.New("topic dne")
-			return nil, merr.WithKV(err, t.KV())
+			return nil, merr.Wrap(ctx, merr.New(t.ctx, "topic dne"))
 		}
 	}
 	return t, nil
-}
-
-// KV implements the mlog.KVer interface
-func (t *Topic) KV() map[string]interface{} {
-	kv := t.ps.KV()
-	kv["topicName"] = t.name
-	return kv
 }
 
 // Publish publishes a message with the given data as its body to the Topic
 func (t *Topic) Publish(ctx context.Context, data []byte) error {
 	_, err := t.topic.Publish(ctx, &Message{Data: data}).Get(ctx)
 	if err != nil {
-		return merr.WithKV(err, t.KV())
+		return merr.Wrap(ctx, merr.Wrap(t.ctx, err))
 	}
 	return nil
 }
 
 // Subscription provides methods around a subscription to a topic in PubSub
 type Subscription struct {
+	ctx   context.Context
 	topic *Topic
 	sub   *pubsub.Subscription
 	name  string
@@ -143,6 +131,7 @@ type Subscription struct {
 func (t *Topic) Subscription(ctx context.Context, name string, create bool) (*Subscription, error) {
 	name = t.name + "_" + name
 	s := &Subscription{
+		ctx:   mctx.Annotate(t.ctx, "subName", name),
 		topic: t,
 		name:  name,
 	}
@@ -155,25 +144,17 @@ func (t *Topic) Subscription(ctx context.Context, name string, create bool) (*Su
 		if isErrAlreadyExists(err) {
 			s.sub = t.ps.Subscription(name)
 		} else if err != nil {
-			return nil, merr.WithKV(err, s.KV())
+			return nil, merr.Wrap(ctx, merr.Wrap(s.ctx, err))
 		}
 	} else {
 		s.sub = t.ps.Subscription(name)
 		if exists, err := s.sub.Exists(ctx); err != nil {
-			return nil, merr.WithKV(err, s.KV())
+			return nil, merr.Wrap(ctx, merr.Wrap(s.ctx, err))
 		} else if !exists {
-			err := merr.New("sub dne")
-			return nil, merr.WithKV(err, s.KV())
+			return nil, merr.Wrap(ctx, merr.New(s.ctx, "sub dne"))
 		}
 	}
 	return s, nil
-}
-
-// KV implements the mlog.KVer interface
-func (s *Subscription) KV() map[string]interface{} {
-	kv := s.topic.KV()
-	kv["subName"] = s.name
-	return kv
 }
 
 // ConsumerFunc is a function which messages being consumed will be passed. The
@@ -221,12 +202,14 @@ func (s *Subscription) Consume(ctx context.Context, fn ConsumerFunc, opts Consum
 	octx := oldctx.Context(ctx)
 	for {
 		err := s.sub.Receive(octx, func(octx oldctx.Context, msg *Message) {
-			innerCtx, cancel := oldctx.WithTimeout(octx, opts.Timeout)
+			innerOCtx, cancel := oldctx.WithTimeout(octx, opts.Timeout)
 			defer cancel()
+			innerCtx := context.Context(innerOCtx)
 
-			ok, err := fn(context.Context(innerCtx), msg)
+			ok, err := fn(innerCtx, msg)
 			if err != nil {
-				mlog.Warn(s.topic.ps.ctx, "error consuming pubsub message", s, merr.KV(err))
+				mlog.Warn("error consuming pubsub message",
+					s.ctx, ctx, innerCtx, merr.Context(err))
 			}
 
 			if ok {
@@ -238,7 +221,8 @@ func (s *Subscription) Consume(ctx context.Context, fn ConsumerFunc, opts Consum
 		if octx.Err() == context.Canceled || err == nil {
 			return
 		} else if err != nil {
-			mlog.Warn(s.topic.ps.ctx, "error consuming from pubsub", s, merr.KV(err))
+			mlog.Warn("error consuming from pubsub",
+				s.ctx, ctx, merr.Context(err))
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -331,7 +315,8 @@ func (s *Subscription) BatchConsume(
 				}
 				ret, err := fn(thisCtx, msgs)
 				if err != nil {
-					mlog.Warn(s.topic.ps.ctx, "error consuming pubsub batch messages", s, merr.KV(err))
+					mlog.Warn("error consuming pubsub batch messages",
+						s.ctx, merr.Context(err))
 				}
 				for i := range thisGroup {
 					thisGroup[i].retCh <- ret // retCh is buffered
@@ -365,7 +350,7 @@ func (s *Subscription) BatchConsume(
 		case ret := <-retCh:
 			return ret, nil
 		case <-ctx.Done():
-			return false, errors.New("reading from batch grouping process timed out")
+			return false, merr.Wrap(ctx, merr.New(s.ctx, "reading from batch grouping process timed out"))
 		}
 	}, opts)
 

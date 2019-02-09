@@ -36,10 +36,10 @@ func (fe *futureErr) set(err error) {
 
 type threadCtxKey int
 
-// Thread spawns a go-routine which executes the given function. The returned
-// Context tracks this go-routine, which can then be passed into the Wait
-// function to block until the spawned go-routine returns.
-func Thread(ctx context.Context, fn func() error) context.Context {
+// WithThread spawns a go-routine which executes the given function. The
+// returned Context tracks this go-routine, which can then be passed into the
+// Wait function to block until the spawned go-routine returns.
+func WithThread(ctx context.Context, fn func() error) context.Context {
 	futErr := newFutureErr()
 	oldFutErrs, _ := ctx.Value(threadCtxKey(0)).([]*futureErr)
 	futErrs := make([]*futureErr, len(oldFutErrs), len(oldFutErrs)+1)

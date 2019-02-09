@@ -18,20 +18,20 @@ func TestHooks(t *T) {
 	}
 
 	ctx := context.Background()
-	ctx = RegisterHook(ctx, 0, mkHook(1))
-	ctx = RegisterHook(ctx, 0, mkHook(2))
+	ctx = WithHook(ctx, 0, mkHook(1))
+	ctx = WithHook(ctx, 0, mkHook(2))
 
 	ctxA := mctx.NewChild(ctx, "a")
-	ctxA = RegisterHook(ctxA, 0, mkHook(3))
-	ctxA = RegisterHook(ctxA, 999, mkHook(999)) // different key
+	ctxA = WithHook(ctxA, 0, mkHook(3))
+	ctxA = WithHook(ctxA, 999, mkHook(999)) // different key
 	ctx = mctx.WithChild(ctx, ctxA)
 
-	ctx = RegisterHook(ctx, 0, mkHook(4))
+	ctx = WithHook(ctx, 0, mkHook(4))
 
 	ctxB := mctx.NewChild(ctx, "b")
-	ctxB = RegisterHook(ctxB, 0, mkHook(5))
+	ctxB = WithHook(ctxB, 0, mkHook(5))
 	ctxB1 := mctx.NewChild(ctxB, "1")
-	ctxB1 = RegisterHook(ctxB1, 0, mkHook(6))
+	ctxB1 = WithHook(ctxB1, 0, mkHook(6))
 	ctxB = mctx.WithChild(ctxB, ctxB1)
 	ctx = mctx.WithChild(ctx, ctxB)
 

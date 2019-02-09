@@ -1,6 +1,7 @@
 package mcfg
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -89,7 +90,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 				break
 			}
 			if !pvOk {
-				return nil, merr.New("unexpected config parameter", "param", arg)
+				return nil, merr.New(context.Background(), "unexpected config parameter", "param", arg)
 			}
 		}
 
@@ -120,7 +121,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 		pvStrValOk = false
 	}
 	if pvOk && !pvStrValOk {
-		return nil, merr.New("param expected a value", "param", key)
+		return nil, merr.New(p.Context, "param expected a value", "param", key)
 	}
 	return pvs, nil
 }

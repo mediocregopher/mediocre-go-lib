@@ -9,11 +9,12 @@
 package merr
 
 import (
+	"context"
 	"errors"
-	"fmt"
-	"sort"
 	"strings"
 	"sync"
+
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 )
 
 var strBuilderPool = sync.Pool{
@@ -27,114 +28,158 @@ func putStrBuilder(sb *strings.Builder) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type val struct {
-	visible bool
-	val     interface{}
-}
-
-func (v val) String() string {
-	return fmt.Sprint(v.val)
-}
-
 type err struct {
 	err  error
-	attr map[interface{}]val
+	attr map[interface{}]interface{}
 }
 
 // attr keys internal to this package
-type attrKey string
+type attrKey int
 
-func wrap(e error, cp bool, skip int) *err {
+const (
+	attrKeyCtx attrKey = iota
+)
+
+func wrap(e error, cp bool) *err {
 	if e == nil {
 		return nil
 	}
 
 	er, ok := e.(*err)
 	if !ok {
-		er := &err{err: e, attr: map[interface{}]val{}}
-		if skip >= 0 {
-			setStack(er, skip+1)
-		}
-		return er
+		return &err{err: e}
 	} else if !cp {
 		return er
 	}
 
 	er2 := &err{
 		err:  er.err,
-		attr: make(map[interface{}]val, len(er.attr)),
+		attr: make(map[interface{}]interface{}, len(er.attr)),
 	}
 	for k, v := range er.attr {
 		er2.attr[k] = v
-	}
-	if _, ok := er2.attr[attrKeyStack]; !ok && skip >= 0 {
-		setStack(er, skip+1)
 	}
 
 	return er2
 }
 
-// Wrap takes in an error and returns one wrapping it in merr's inner type,
-// which embeds information like the stack trace.
-func Wrap(e error) error {
-	return wrap(e, false, 1)
+// Base takes in an error and checks if it is merr's internal error type. If it
+// is then the underlying error which is being wrapped is returned. If it's not
+// then the passed in error is returned as-is.
+func Base(e error) error {
+	if er, ok := e.(*err); ok {
+		return er.err
+	}
+	return e
 }
 
-// New returns a new error with the given string as its error string. New
-// automatically wraps the error in merr's inner type, which embeds information
-// like the stack trace.
-//
-// For convenience, visible key/values may be passed into New at this point. For
-// example, the following two are equivalent:
-//
-//	merr.WithValue(merr.New("foo"), "bar", "baz", true)
-//	merr.New("foo", "bar", "baz")
-//
-func New(str string, kvs ...interface{}) error {
-	if len(kvs)%2 != 0 {
-		panic("key passed in without corresponding value")
+// WithValue returns a copy of the original error, automatically wrapping it if
+// the error is not from merr (see Wrap). The returned error has an attribute
+// value set on it for the given key.
+func WithValue(e error, k, v interface{}) error {
+	if e == nil {
+		return nil
 	}
-	err := wrap(errors.New(str), false, 1)
-	for i := 0; i < len(kvs); i += 2 {
-		err.attr[kvs[i]] = val{
-			visible: true,
-			val:     kvs[i+1],
-		}
+	er := wrap(e, true)
+	if er.attr == nil {
+		er.attr = map[interface{}]interface{}{}
 	}
-	return err
+	er.attr[k] = v
+	return er
 }
 
-func (er *err) visibleAttrs() [][2]string {
-	out := make([][2]string, 0, len(er.attr))
-	for k, v := range er.attr {
-		if !v.visible {
-			continue
-		}
-		out = append(out, [2]string{
-			strings.Trim(fmt.Sprintf("%q", k), `"`),
-			fmt.Sprint(v.val),
-		})
+// Value returns the value embedded in the error for the given key, or nil if
+// the error isn't from this package or doesn't have that key embedded.
+func Value(e error, k interface{}) interface{} {
+	if e == nil {
+		return nil
+	}
+	return wrap(e, false).attr[k]
+}
+
+// WrapSkip is like Wrap but also allows for skipping extra stack frames when
+// embedding the stack into the error.
+func WrapSkip(ctx context.Context, e error, skip int, kvs ...interface{}) error {
+	prevCtx, _ := Value(e, attrKeyCtx).(context.Context)
+	if prevCtx != nil {
+		ctx = mctx.MergeAnnotations(prevCtx, ctx)
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		return out[i][0] < out[j][0]
-	})
+	if _, ok := mctx.Stack(ctx); !ok {
+		ctx = mctx.WithStack(ctx, skip+1)
+	}
+	if len(kvs) > 0 {
+		ctx = mctx.Annotate(ctx, kvs...)
+	}
 
-	return out
+	return WithValue(e, attrKeyCtx, ctx)
+}
+
+// Wrap takes in an error and returns one which wraps it in merr's inner type,
+// embedding the given Context (which can later be retrieved by Ctx) at the same
+// time.
+//
+// For convenience, extra annotation information can be passed in here as well
+// via the kvs argument. See mctx.Annotate for more information.
+//
+// This function automatically embeds stack information into the Context as it's
+// being stored, using mctx.WithStack, unless the error already has stack
+// information in it.
+func Wrap(ctx context.Context, e error, kvs ...interface{}) error {
+	return WrapSkip(ctx, e, 1, kvs...)
+}
+
+// New is a shortcut for:
+//	merr.Wrap(ctx, errors.New(str), kvs...)
+func New(ctx context.Context, str string, kvs ...interface{}) error {
+	return WrapSkip(ctx, errors.New(str), 1, kvs...)
+}
+
+// TODO it would be more convenient in a lot of cases if New and Wrap took in a
+// list of Contexts.
+
+type annotateKey string
+
+func ctx(e error) context.Context {
+	ctx, _ := Value(e, attrKeyCtx).(context.Context)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if stack, ok := mctx.Stack(ctx); ok {
+		ctx = mctx.Annotate(ctx, annotateKey("errLoc"), stack.String())
+	}
+	return ctx
+}
+
+// Context returns the Context embedded in this error from the last call to Wrap
+// or New. If none is embedded this uses context.Background().
+//
+// The returned Context will have annotated on it (see mctx.Annotate) the
+// underlying error's string (as returned by Error()) and the stack location in
+// the Context. Stack locations are automatically added by New and Wrap via
+// mctx.WithStack.
+//
+// If this error is nil this returns context.Background().
+func Context(e error) context.Context {
+	if e == nil {
+		return context.Background()
+	}
+	ctx := ctx(e)
+	ctx = mctx.Annotate(ctx, annotateKey("err"), Base(e).Error())
+	return ctx
 }
 
 func (er *err) Error() string {
-	visAttrs := er.visibleAttrs()
-	if len(visAttrs) == 0 {
-		return er.err.Error()
-	}
+	ctx := ctx(er)
 
 	sb := strBuilderPool.Get().(*strings.Builder)
 	defer putStrBuilder(sb)
-
 	sb.WriteString(strings.TrimSpace(er.err.Error()))
-	for _, attr := range visAttrs {
-		k, v := strings.TrimSpace(attr[0]), strings.TrimSpace(attr[1])
+
+	annotations := mctx.Annotations(ctx).StringSlice(true)
+	for _, kve := range annotations {
+		k, v := strings.TrimSpace(kve[0]), strings.TrimSpace(kve[1])
 		sb.WriteString("\n\t* ")
 		sb.WriteString(k)
 		sb.WriteString(": ")
@@ -152,16 +197,6 @@ func (er *err) Error() string {
 	}
 
 	return sb.String()
-}
-
-// Base takes in an error and checks if it is merr's internal error type. If it
-// is then the underlying error which is being wrapped is returned. If it's not
-// then the passed in error is returned as-is.
-func Base(e error) error {
-	if er, ok := e.(*err); ok {
-		return er.err
-	}
-	return e
 }
 
 // Equal is a shortcut for Base(e1) == Base(e2).

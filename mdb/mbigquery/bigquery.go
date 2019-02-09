@@ -42,43 +42,37 @@ type BigQuery struct {
 	tableUploaders map[[2]string]*bigquery.Uploader
 }
 
-// MNew returns a BigQuery instance which will be initialized and configured
-// when the start event is triggered on the returned (see mrun.Start). The
-// BigQuery instance will have Close called on it when the stop event is
-// triggered on the returned Context (see mrun.Stop).
+// WithBigQuery returns a BigQuery instance which will be initialized and
+// configured when the start event is triggered on the returned (see
+// mrun.Start). The BigQuery instance will have Close called on it when the stop
+// event is triggered on the returned Context (see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
-func MNew(ctx context.Context, gce *mdb.GCE) (context.Context, *BigQuery) {
+func WithBigQuery(parent context.Context, gce *mdb.GCE) (context.Context, *BigQuery) {
+	ctx := mctx.NewChild(parent, "mbigquery")
 	if gce == nil {
-		ctx, gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.WithGCE(ctx, "")
 	}
 
 	bq := &BigQuery{
 		gce:            gce,
 		tables:         map[[2]string]*bigquery.Table{},
 		tableUploaders: map[[2]string]*bigquery.Uploader{},
-		ctx:            mctx.NewChild(ctx, "bigquery"),
 	}
 
-	// TODO the equivalent functionality as here will be added with annotations
-	// bq.log.SetKV(bq)
-
-	bq.ctx = mrun.OnStart(bq.ctx, func(innerCtx context.Context) error {
-		mlog.Info(bq.ctx, "connecting to bigquery")
+	ctx = mrun.WithStartHook(ctx, func(innerCtx context.Context) error {
+		bq.ctx = mctx.MergeAnnotations(bq.ctx, bq.gce.Context())
+		mlog.Info("connecting to bigquery", bq.ctx)
 		var err error
 		bq.Client, err = bigquery.NewClient(innerCtx, bq.gce.Project, bq.gce.ClientOptions()...)
-		return merr.WithKV(err, bq.KV())
+		return merr.Wrap(bq.ctx, err)
 	})
-	bq.ctx = mrun.OnStop(bq.ctx, func(context.Context) error {
+	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return bq.Client.Close()
 	})
-	return mctx.WithChild(ctx, bq.ctx), bq
-}
-
-// KV implements the mlog.KVer interface.
-func (bq *BigQuery) KV() map[string]interface{} {
-	return bq.gce.KV()
+	bq.ctx = ctx
+	return mctx.WithChild(parent, ctx), bq
 }
 
 // Table initializes and returns the table instance with the given dataset and
@@ -100,17 +94,18 @@ func (bq *BigQuery) Table(
 		return table, bq.tableUploaders[key], nil
 	}
 
-	kv := mlog.KV{"bigQueryDataset": dataset, "bigQueryTable": tableName}
-	mlog.Debug(bq.ctx, "creating/grabbing table", kv)
+	ctx = mctx.MergeAnnotations(ctx, bq.ctx)
+	ctx = mctx.Annotate(ctx, "dataset", dataset, "table", tableName)
 
+	mlog.Debug("creating/grabbing table", bq.ctx)
 	schema, err := bigquery.InferSchema(schemaObj)
 	if err != nil {
-		return nil, nil, merr.WithKV(err, bq.KV(), kv.KV())
+		return nil, nil, merr.Wrap(ctx, err)
 	}
 
 	ds := bq.Dataset(dataset)
 	if err := ds.Create(ctx, nil); err != nil && !isErrAlreadyExists(err) {
-		return nil, nil, merr.WithKV(err, bq.KV(), kv.KV())
+		return nil, nil, merr.Wrap(ctx, err)
 	}
 
 	table := ds.Table(tableName)
@@ -119,7 +114,7 @@ func (bq *BigQuery) Table(
 		Schema: schema,
 	}
 	if err := table.Create(ctx, meta); err != nil && !isErrAlreadyExists(err) {
-		return nil, nil, merr.WithKV(err, bq.KV(), kv.KV())
+		return nil, nil, merr.Wrap(ctx, err)
 	}
 	uploader := table.Uploader()
 

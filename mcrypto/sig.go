@@ -2,6 +2,7 @@ package mcrypto
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -66,12 +67,12 @@ func (s *Signature) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, sigV0)
 	if !ok || len(strEnc) < hex.EncodedLen(10) {
-		return merr.WithValue(errMalformedSig, "sigStr", str, true)
+		return merr.Wrap(context.Background(), errMalformedSig, "sigStr", str)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.WithValue(err, "sigStr", str, true)
+		return merr.Wrap(context.Background(), err, "sigStr", str)
 	}
 
 	unixNano, b := int64(binary.BigEndian.Uint64(b[:8])), b[8:]
@@ -81,7 +82,7 @@ func (s *Signature) UnmarshalText(b []byte) error {
 		if err != nil {
 			return nil
 		} else if len(b) < 1+int(b[0]) {
-			err = merr.WithValue(errMalformedSig, "sigStr", str, true)
+			err = merr.Wrap(context.Background(), errMalformedSig, "sigStr", str)
 			return nil
 		}
 		out := b[1 : 1+b[0]]
@@ -161,7 +162,7 @@ func SignString(s Signer, in string) Signature {
 // Verify reads all data from the io.Reader and uses the Verifier to verify that
 // the Signature is for that data.
 //
-// Returns any errors from io.Reader, or ErrInvalidSig (use merry.Is(err,
+// Returns any errors from io.Reader, or ErrInvalidSig (use merr.Equal(err,
 // mcrypto.ErrInvalidSig) to check).
 func Verify(v Verifier, s Signature, r io.Reader) error {
 	return v.verify(s, r)
@@ -170,7 +171,7 @@ func Verify(v Verifier, s Signature, r io.Reader) error {
 // VerifyBytes uses the Verifier to verify that the Signature is for the given
 // []bytes.
 //
-// Returns ErrInvalidSig (use merry.Is(err, mcrypto.ErrInvalidSig) to check).
+// Returns ErrInvalidSig (use merr.Equal(err, mcrypto.ErrInvalidSig) to check).
 func VerifyBytes(v Verifier, s Signature, b []byte) error {
 	return v.verify(s, bytes.NewBuffer(b))
 }
@@ -178,7 +179,7 @@ func VerifyBytes(v Verifier, s Signature, b []byte) error {
 // VerifyString uses the Verifier to verify that the Signature is for the given
 // string.
 //
-// Returns ErrInvalidSig (use merry.Is(err, mcrypto.ErrInvalidSig) to check).
+// Returns ErrInvalidSig (use merr.Equal(err, mcrypto.ErrInvalidSig) to check).
 func VerifyString(v Verifier, s Signature, in string) error {
 	return VerifyBytes(v, s, []byte(in))
 }

@@ -1,6 +1,7 @@
 package m
 
 import (
+	"context"
 	"encoding/json"
 	. "testing"
 
@@ -13,7 +14,7 @@ import (
 
 func TestServiceCtx(t *T) {
 	t.Run("log-level", func(t *T) {
-		ctx := NewServiceCtx()
+		ctx := ServiceContext()
 
 		// pull the Logger out of the ctx and set the Handler on it, so we can check
 		// the log level
@@ -36,16 +37,16 @@ func TestServiceCtx(t *T) {
 			t.Fatal(err)
 		}
 
-		mlog.From(ctxA).Info(ctxA, "foo")
-		mlog.From(ctxA).Debug(ctxA, "bar")
+		mlog.From(ctxA).Info("foo", ctxA)
+		mlog.From(ctxA).Debug("bar", ctxA)
 		massert.Fatal(t, massert.All(
 			massert.Len(msgs, 2),
 			massert.Equal(msgs[0].Level.String(), "INFO"),
 			massert.Equal(msgs[0].Description, "foo"),
-			massert.Equal(msgs[0].Context, ctxA),
+			massert.Equal(msgs[0].Contexts, []context.Context{ctxA}),
 			massert.Equal(msgs[1].Level.String(), "DEBUG"),
 			massert.Equal(msgs[1].Description, "bar"),
-			massert.Equal(msgs[1].Context, ctxA),
+			massert.Equal(msgs[1].Contexts, []context.Context{ctxA}),
 		))
 	})
 }

@@ -1,6 +1,7 @@
 package mcrypto
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -58,7 +59,7 @@ func (pk PublicKey) verify(s Signature, r io.Reader) error {
 		return err
 	}
 	if err := rsa.VerifyPSS(&pk.PublicKey, crypto.SHA256, h.Sum(nil), s.sig, nil); err != nil {
-		return merr.WithValue(ErrInvalidSig, "sig", s, true)
+		return merr.Wrap(context.Background(), ErrInvalidSig, "sig", s)
 	}
 	return nil
 }
@@ -88,12 +89,12 @@ func (pk *PublicKey) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, pubKeyV0)
 	if !ok || len(strEnc) <= hex.EncodedLen(8) {
-		return merr.WithValue(errMalformedPublicKey, "pubKeyStr", str, true)
+		return merr.Wrap(context.Background(), errMalformedPublicKey, "pubKeyStr", str)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.WithValue(err, "pubKeyStr", str, true)
+		return merr.Wrap(context.Background(), err, "pubKeyStr", str)
 	}
 
 	pk.E = int(binary.BigEndian.Uint64(b))
@@ -184,17 +185,17 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, privKeyV0)
 	if !ok {
-		return merr.Wrap(errMalformedPrivateKey)
+		return merr.Wrap(context.Background(), errMalformedPrivateKey)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.Wrap(errMalformedPrivateKey)
+		return merr.Wrap(context.Background(), errMalformedPrivateKey)
 	}
 
 	e, n := binary.Uvarint(b)
 	if n <= 0 {
-		return merr.Wrap(errMalformedPrivateKey)
+		return merr.Wrap(context.Background(), errMalformedPrivateKey)
 	}
 	pk.PublicKey.E = int(e)
 	b = b[n:]
@@ -205,7 +206,7 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 		}
 		l, n := binary.Uvarint(b)
 		if n <= 0 {
-			err = merr.Wrap(errMalformedPrivateKey)
+			err = merr.Wrap(context.Background(), errMalformedPrivateKey)
 		}
 		b = b[n:]
 		i := new(big.Int)

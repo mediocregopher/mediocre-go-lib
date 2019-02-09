@@ -116,7 +116,7 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 		// the Sources don't actually care about the other fields of Param,
 		// those are only used by Populate once it has all ParamValues together
 	}
-	*thisCtx = MustAdd(*thisCtx, ctxP)
+	*thisCtx = WithParam(*thisCtx, ctxP)
 	ctxP, _ = getParam(*thisCtx, ctxP.Name) // get it back out to get any added fields
 
 	if !p.unset {
@@ -155,9 +155,9 @@ func (scs srcCommonState) assert(s Source) error {
 
 func TestSources(t *T) {
 	ctx := context.Background()
-	ctx, a := RequiredInt(ctx, "a", "")
-	ctx, b := RequiredInt(ctx, "b", "")
-	ctx, c := RequiredInt(ctx, "c", "")
+	ctx, a := WithRequiredInt(ctx, "a", "")
+	ctx, b := WithRequiredInt(ctx, "b", "")
+	ctx, c := WithRequiredInt(ctx, "c", "")
 
 	err := Populate(ctx, Sources{
 		SourceCLI{Args: []string{"--a=1", "--b=666"}},
@@ -173,10 +173,10 @@ func TestSources(t *T) {
 
 func TestSourceParamValues(t *T) {
 	ctx := context.Background()
-	ctx, a := RequiredInt(ctx, "a", "")
+	ctx, a := WithRequiredInt(ctx, "a", "")
 	foo := mctx.NewChild(ctx, "foo")
-	foo, b := RequiredString(foo, "b", "")
-	foo, c := Bool(foo, "c", "")
+	foo, b := WithRequiredString(foo, "b", "")
+	foo, c := WithBool(foo, "c", "")
 	ctx = mctx.WithChild(ctx, foo)
 
 	err := Populate(ctx, ParamValues{

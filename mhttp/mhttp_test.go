@@ -13,9 +13,9 @@ import (
 )
 
 func TestMListenAndServe(t *T) {
-	ctx := mtest.NewCtx()
+	ctx := mtest.Context()
 
-	ctx, srv := MListenAndServe(ctx, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	ctx, srv := WithListeningServer(ctx, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		io.Copy(rw, r.Body)
 	}))
 

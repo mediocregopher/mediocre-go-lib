@@ -7,7 +7,6 @@ import (
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
-	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 	"google.golang.org/api/option"
 )
@@ -15,32 +14,36 @@ import (
 // GCE wraps configuration parameters commonly used for interacting with GCE
 // services.
 type GCE struct {
+	ctx      context.Context
 	Project  string
 	CredFile string
 }
 
-// MGCE returns a GCE instance which will be initialized and configured when the
-// start event is triggered on the returned Context (see mrun.Start).
+// WithGCE returns a GCE instance which will be initialized and configured when
+// the start event is triggered on the returned Context (see mrun.Start).
 // defaultProject is used as the default value for the mcfg parameter this
 // function creates.
-func MGCE(parent context.Context, defaultProject string) (context.Context, *GCE) {
+func WithGCE(parent context.Context, defaultProject string) (context.Context, *GCE) {
 	ctx := mctx.NewChild(parent, "gce")
-	ctx, credFile := mcfg.String(ctx, "cred-file", "", "Path to GCE credientials JSON file, if any")
+	ctx, credFile := mcfg.WithString(ctx, "cred-file", "", "Path to GCE credientials JSON file, if any")
 
 	var project *string
 	const projectUsage = "Name of GCE project to use"
 	if defaultProject == "" {
-		ctx, project = mcfg.RequiredString(ctx, "project", projectUsage)
+		ctx, project = mcfg.WithRequiredString(ctx, "project", projectUsage)
 	} else {
-		ctx, project = mcfg.String(ctx, "project", defaultProject, projectUsage)
+		ctx, project = mcfg.WithString(ctx, "project", defaultProject, projectUsage)
 	}
 
 	var gce GCE
-	ctx = mrun.OnStart(ctx, func(context.Context) error {
+	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
 		gce.Project = *project
 		gce.CredFile = *credFile
+		gce.ctx = mctx.Annotate(ctx, "project", gce.Project)
 		return nil
 	})
+
+	gce.ctx = ctx
 	return mctx.WithChild(parent, ctx), &gce
 }
 
@@ -54,9 +57,7 @@ func (gce *GCE) ClientOptions() []option.ClientOption {
 	return opts
 }
 
-// KV implements the mlog.KVer interface.
-func (gce *GCE) KV() map[string]interface{} {
-	return mlog.KV{
-		"gceProject": gce.Project,
-	}
+// Context returns the annotated Context from this instance's initialization.
+func (gce *GCE) Context() context.Context {
+	return gce.ctx
 }

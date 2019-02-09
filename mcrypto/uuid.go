@@ -2,6 +2,7 @@ package mcrypto
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -68,11 +69,11 @@ func (u *UUID) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, uuidV0)
 	if !ok || len(strEnc) != hex.EncodedLen(16) {
-		return merr.WithValue(errMalformedUUID, "uuidStr", str, true)
+		return merr.Wrap(context.Background(), errMalformedUUID, "uuidStr", str)
 	}
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.WithValue(err, "uuidStr", str, true)
+		return merr.Wrap(context.Background(), err, "uuidStr", str)
 	}
 	u.b = b
 	return nil

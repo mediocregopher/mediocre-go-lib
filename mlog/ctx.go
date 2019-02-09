@@ -1,53 +1,58 @@
 package mlog
 
-import "context"
+import (
+	"context"
+)
 
 type ctxKey int
 
-// Set returns the Context with the Logger carried by it.
-func Set(ctx context.Context, l *Logger) context.Context {
+// WithLogger returns the Context with the Logger carried by it.
+func WithLogger(ctx context.Context, l *Logger) context.Context {
 	return context.WithValue(ctx, ctxKey(0), l)
 }
 
 // DefaultLogger is an instance of Logger which is returned by From when a
-// Logger hasn't been previously Set on the Context passed in.
+// Logger hasn't been previously WithLogger on the Contexts passed in.
 var DefaultLogger = NewLogger()
 
-// From returns the Logger carried by this Context, or DefaultLogger if none is
-// being carried.
-func From(ctx context.Context) *Logger {
-	if l, _ := ctx.Value(ctxKey(0)).(*Logger); l != nil {
-		return l
+// From looks at each context and returns the Logger from the first Context
+// which carries one via a WithLogger call. If none carry a Logger than
+// DefaultLogger is returned.
+func From(ctxs ...context.Context) *Logger {
+	for _, ctx := range ctxs {
+		if l, _ := ctx.Value(ctxKey(0)).(*Logger); l != nil {
+			return l
+		}
 	}
 	return DefaultLogger
 }
 
 // Debug is a shortcut for
-//	mlog.From(ctx).Debug(ctx, descr, kvs...)
-func Debug(ctx context.Context, descr string, kvs ...KVer) {
-	From(ctx).Debug(ctx, descr, kvs...)
+//	mlog.From(ctxs...).Debug(desc, ctxs...)
+func Debug(descr string, ctxs ...context.Context) {
+	From(ctxs...).Debug(descr, ctxs...)
 }
 
 // Info is a shortcut for
-//	mlog.From(ctx).Info(ctx, descr, kvs...)
-func Info(ctx context.Context, descr string, kvs ...KVer) {
-	From(ctx).Info(ctx, descr, kvs...)
+//	mlog.From(ctxs...).Info(desc, ctxs...)
+func Info(descr string, ctxs ...context.Context) {
+	From(ctxs...).Info(descr, ctxs...)
 }
 
 // Warn is a shortcut for
-//	mlog.From(ctx).Warn(ctx, descr, kvs...)
-func Warn(ctx context.Context, descr string, kvs ...KVer) {
-	From(ctx).Warn(ctx, descr, kvs...)
+//	mlog.From(ctxs...).Warn(desc, ctxs...)
+func Warn(descr string, ctxs ...context.Context) {
+	From(ctxs...).Warn(descr, ctxs...)
 }
 
 // Error is a shortcut for
-//	mlog.From(ctx).Error(ctx, descr, kvs...)
-func Error(ctx context.Context, descr string, kvs ...KVer) {
-	From(ctx).Error(ctx, descr, kvs...)
+//	mlog.From(ctxs...).Error(desc, ctxs...)
+func Error(descr string, ctxs ...context.Context) {
+	From(ctxs...).Error(descr, ctxs...)
 }
 
 // Fatal is a shortcut for
-//	mlog.From(ctx).Fatal(ctx, descr, kvs...)
-func Fatal(ctx context.Context, descr string, kvs ...KVer) {
-	From(ctx).Fatal(ctx, descr, kvs...)
+//	mlog.From(ctxs...).Fatal(desc, ctxs...)
+func Fatal(descr string, ctxs ...context.Context) {
+	From(ctxs...).Fatal(descr, ctxs...)
 }

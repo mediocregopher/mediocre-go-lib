@@ -31,61 +31,56 @@ type Bigtable struct {
 	ctx context.Context
 }
 
-// MNew returns a Bigtable instance which will be initialized and configured
-// when the start event is triggered on the returned Context (see mrun.Start).
-// The Bigtable instance will have Close called on it when the stop event is
-// triggered on the returned Context (see mrun.Stop).
+// WithBigTable returns a Bigtable instance which will be initialized and
+// configured when the start event is triggered on the returned Context (see
+// mrun.Start). The Bigtable instance will have Close called on it when the
+// stop event is triggered on the returned Context (see mrun.Stop).
 //
 // gce is optional and can be passed in if there's an existing gce object which
 // should be used, otherwise a new one will be created with mdb.MGCE.
 //
 // defaultInstance can be given as the instance name to use as the default
 // parameter value. If empty the parameter will be required to be set.
-func MNew(ctx context.Context, gce *mdb.GCE, defaultInstance string) (context.Context, *Bigtable) {
+func WithBigTable(parent context.Context, gce *mdb.GCE, defaultInstance string) (context.Context, *Bigtable) {
+	ctx := mctx.NewChild(parent, "bigtable")
 	if gce == nil {
-		ctx, gce = mdb.MGCE(ctx, "")
+		ctx, gce = mdb.WithGCE(ctx, "")
 	}
 
 	bt := &Bigtable{
 		gce: gce,
-		ctx: mctx.NewChild(ctx, "bigtable"),
 	}
-
-	// TODO the equivalent functionality as here will be added with annotations
-	// bt.log.SetKV(bt)
 
 	var inst *string
 	{
 		const name, descr = "instance", "name of the bigtable instance in the project to connect to"
 		if defaultInstance != "" {
-			bt.ctx, inst = mcfg.String(bt.ctx, name, defaultInstance, descr)
+			ctx, inst = mcfg.WithString(ctx, name, defaultInstance, descr)
 		} else {
-			bt.ctx, inst = mcfg.RequiredString(bt.ctx, name, descr)
+			ctx, inst = mcfg.WithRequiredString(ctx, name, descr)
 		}
 	}
 
-	bt.ctx = mrun.OnStart(bt.ctx, func(innerCtx context.Context) error {
+	ctx = mrun.WithStartHook(ctx, func(innerCtx context.Context) error {
 		bt.Instance = *inst
-		mlog.Info(bt.ctx, "connecting to bigtable", bt)
+
+		bt.ctx = mctx.MergeAnnotations(bt.ctx, bt.gce.Context())
+		bt.ctx = mctx.Annotate(bt.ctx, "instance", bt.Instance)
+
+		mlog.Info("connecting to bigtable", bt.ctx)
 		var err error
 		bt.Client, err = bigtable.NewClient(
 			innerCtx,
 			bt.gce.Project, bt.Instance,
 			bt.gce.ClientOptions()...,
 		)
-		return merr.WithKV(err, bt.KV())
+		return merr.Wrap(bt.ctx, err)
 	})
-	bt.ctx = mrun.OnStop(bt.ctx, func(context.Context) error {
+	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return bt.Client.Close()
 	})
-	return mctx.WithChild(ctx, bt.ctx), bt
-}
-
-// KV implements the mlog.KVer interface.
-func (bt *Bigtable) KV() map[string]interface{} {
-	kv := bt.gce.KV()
-	kv["bigtableInstance"] = bt.Instance
-	return kv
+	bt.ctx = ctx
+	return mctx.WithChild(parent, ctx), bt
 }
 
 // EnsureTable ensures that the given table exists and has (at least) the given
@@ -93,28 +88,29 @@ func (bt *Bigtable) KV() map[string]interface{} {
 //
 // This method requires admin privileges on the bigtable instance.
 func (bt *Bigtable) EnsureTable(ctx context.Context, name string, colFams ...string) error {
-	kv := mlog.KV{"bigtableTable": name}
-	mlog.Info(bt.ctx, "ensuring table", kv)
+	ctx = mctx.MergeAnnotations(ctx, bt.ctx)
+	ctx = mctx.Annotate(ctx, "table", name)
+	mlog.Info("ensuring table", ctx)
 
-	mlog.Debug(bt.ctx, "creating admin client", kv)
+	mlog.Debug("creating admin client", ctx)
 	adminClient, err := bigtable.NewAdminClient(ctx, bt.gce.Project, bt.Instance)
 	if err != nil {
-		return merr.WithKV(err, bt.KV(), kv.KV())
+		return merr.Wrap(ctx, err)
 	}
 	defer adminClient.Close()
 
-	mlog.Debug(bt.ctx, "creating bigtable table (if needed)", kv)
+	mlog.Debug("creating bigtable table (if needed)", ctx)
 	err = adminClient.CreateTable(ctx, name)
 	if err != nil && !isErrAlreadyExists(err) {
-		return merr.WithKV(err, bt.KV(), kv.KV())
+		return merr.Wrap(ctx, err)
 	}
 
 	for _, colFam := range colFams {
-		kv := kv.Set("family", colFam)
-		mlog.Debug(bt.ctx, "creating bigtable column family (if needed)", kv)
+		ctx := mctx.Annotate(ctx, "family", colFam)
+		mlog.Debug("creating bigtable column family (if needed)", ctx)
 		err := adminClient.CreateColumnFamily(ctx, name, colFam)
 		if err != nil && !isErrAlreadyExists(err) {
-			return merr.WithKV(err, bt.KV(), kv.KV())
+			return merr.Wrap(ctx, err)
 		}
 	}
 

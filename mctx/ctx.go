@@ -11,16 +11,12 @@ package mctx
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// New returns a new context which can be used as the root context for all
-// purposes in this framework.
-//func New() Context {
-//	return &context{Context: goctx.Background()}
-//}
 
 type ancestryKey int // 0 -> children, 1 -> parent, 2 -> path
 
@@ -97,6 +93,14 @@ func pathCP(ctx context.Context) []string {
 	return outPath
 }
 
+func pathHash(path []string) string {
+	pathHash := sha256.New()
+	for _, pathEl := range path {
+		fmt.Fprintf(pathHash, "%q.", pathEl)
+	}
+	return hex.EncodeToString(pathHash.Sum(nil))
+}
+
 // Name returns the name this Context was generated with via NewChild, or false
 // if this Context was not generated via NewChild.
 func Name(ctx context.Context) (string, bool) {
@@ -119,6 +123,7 @@ func NewChild(parent context.Context, name string) context.Context {
 	}
 
 	childPath := append(pathCP(parent), name)
+
 	child := withoutLocalValues(parent)
 	child = context.WithValue(child, ancestryKeyChildren, nil)    // unset children
 	child = context.WithValue(child, ancestryKeyChildrenMap, nil) // unset children

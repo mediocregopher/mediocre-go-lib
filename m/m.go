@@ -6,10 +6,12 @@ package m
 
 import (
 	"context"
+	"log"
 	"os"
 	"os/signal"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
@@ -24,25 +26,26 @@ func CfgSource() mcfg.Source {
 	}
 }
 
-// NewServiceCtx returns a Context which should be used as the root Context when
-// creating long running services, such as an RPC service or database.
+// ServiceContext returns a Context which should be used as the root Context
+// when creating long running services, such as an RPC service or database.
 //
 // The returned Context will automatically handle setting up global
 // configuration parameters like "log-level", as well as an http endpoint where
 // debug information about the running process can be accessed.
 //
 // TODO set up the debug endpoint.
-func NewServiceCtx() context.Context {
+func ServiceContext() context.Context {
 	ctx := context.Background()
 
 	// set up log level handling
 	logger := mlog.NewLogger()
-	ctx = mlog.Set(ctx, logger)
-	ctx, logLevelStr := mcfg.String(ctx, "log-level", "info", "Maximum log level which will be printed.")
-	ctx = mrun.OnStart(ctx, func(context.Context) error {
+	ctx = mlog.WithLogger(ctx, logger)
+	ctx, logLevelStr := mcfg.WithString(ctx, "log-level", "info", "Maximum log level which will be printed.")
+	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
 		logLevel := mlog.LevelFromString(*logLevelStr)
+		log.Printf("setting log level to %v", logLevel)
 		if logLevel == nil {
-			return merr.New("invalid log level", "log-level", *logLevelStr)
+			return merr.New(ctx, "invalid log level", "log-level", *logLevelStr)
 		}
 		logger.SetMaxLevel(logLevel)
 		return nil
@@ -58,20 +61,20 @@ func NewServiceCtx() context.Context {
 func Run(ctx context.Context) {
 	log := mlog.From(ctx)
 	if err := mcfg.Populate(ctx, CfgSource()); err != nil {
-		log.Fatal(ctx, "error populating configuration", merr.KV(err))
+		log.Fatal("error populating configuration", ctx, merr.Context(err))
 	} else if err := mrun.Start(ctx); err != nil {
-		log.Fatal(ctx, "error triggering start event", merr.KV(err))
+		log.Fatal("error triggering start event", ctx, merr.Context(err))
 	}
 
 	{
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt)
 		s := <-ch
-		log.Info(ctx, "signal received, stopping", mlog.KV{"signal": s})
+		log.Info("signal received, stopping", mctx.Annotate(ctx, "signal", s))
 	}
 
 	if err := mrun.Stop(ctx); err != nil {
-		log.Fatal(ctx, "error triggering stop event", merr.KV(err))
+		log.Fatal("error triggering stop event", ctx, merr.Context(err))
 	}
-	log.Info(ctx, "exiting process")
+	log.Info("exiting process", ctx)
 }

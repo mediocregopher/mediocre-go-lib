@@ -1,6 +1,7 @@
 package mcrypto
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -76,9 +77,9 @@ func (s Secret) sign(r io.Reader) (Signature, error) {
 func (s Secret) verify(sig Signature, r io.Reader) error {
 	sigB, err := s.signRaw(r, uint8(len(sig.sig)), sig.salt, sig.t)
 	if err != nil {
-		return merr.WithValue(err, "sig", sig, true)
+		return merr.Wrap(context.Background(), err, "sig", sig)
 	} else if !hmac.Equal(sigB, sig.sig) {
-		return merr.WithValue(ErrInvalidSig, "sig", sig, true)
+		return merr.Wrap(context.Background(), ErrInvalidSig, "sig", sig)
 	}
 	return nil
 }
