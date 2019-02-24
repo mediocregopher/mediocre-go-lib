@@ -56,3 +56,8 @@ func WithMySQL(parent context.Context, defaultDB string) (context.Context, *SQL)
 	sql.ctx = ctx
 	return mctx.WithChild(parent, ctx), sql
 }
+
+// Context returns the annotated Context from this instance's initialization.
+func (sql *SQL) Context() context.Context {
+	return sql.Context()
+}
