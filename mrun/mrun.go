@@ -36,31 +36,39 @@ func (fe *futureErr) set(err error) {
 
 type threadCtxKey int
 
-// WithThread spawns a go-routine which executes the given function. The
-// returned Context tracks this go-routine, which can then be passed into the
-// Wait function to block until the spawned go-routine returns.
-func WithThread(ctx context.Context, fn func() error) context.Context {
-	futErr := newFutureErr()
+// WithThreads spawns n go-routines, each of which executes the given function. The
+// returned Context tracks these go-routines, and can then be passed into the
+// Wait function to block until the spawned go-routines all return.
+func WithThreads(ctx context.Context, n uint, fn func() error) context.Context {
+	// I dunno why this would happen, but it wouldn't actually hurt anything
+	if n == 0 {
+		return ctx
+	}
+
 	oldFutErrs, _ := ctx.Value(threadCtxKey(0)).([]*futureErr)
-	futErrs := make([]*futureErr, len(oldFutErrs), len(oldFutErrs)+1)
+	futErrs := make([]*futureErr, len(oldFutErrs), len(oldFutErrs)+int(n))
 	copy(futErrs, oldFutErrs)
-	futErrs = append(futErrs, futErr)
-	ctx = context.WithValue(ctx, threadCtxKey(0), futErrs)
 
-	go func() {
-		futErr.set(fn())
-	}()
+	for i := uint(0); i < n; i++ {
+		futErr := newFutureErr()
+		futErrs = append(futErrs, futErr)
 
-	return ctx
+		go func() {
+			futErr.set(fn())
+		}()
+	}
+
+	return context.WithValue(ctx, threadCtxKey(0), futErrs)
 }
 
 // ErrDone is returned from Wait if cancelCh is closed before all threads have
 // returned.
 var ErrDone = errors.New("Wait is done waiting")
 
-// Wait blocks until all go-routines spawned using Thread on the passed in
+// Wait blocks until all go-routines spawned using WithThreads on the passed in
 // Context (and its predecessors) have returned. Any number of the go-routines
-// may have returned already when Wait is called.
+// may have returned already when Wait is called, and not all go-routines need
+// be from the same WithThreads call.
 //
 // If any of the thread functions returned an error during its runtime Wait will
 // return that error. If multiple returned an error only one of those will be
@@ -70,7 +78,7 @@ var ErrDone = errors.New("Wait is done waiting")
 // this function stops waiting and returns ErrDone.
 //
 // Wait is safe to call in parallel, and will return the same result if called
-// multiple times in sequence.
+// multiple times.
 func Wait(ctx context.Context, cancelCh <-chan struct{}) error {
 	// First wait for all the children, and see if any of them return an error
 	children := mctx.Children(ctx)

@@ -43,7 +43,7 @@ func WithListeningServer(ctx context.Context, h http.Handler) (context.Context, 
 
 	srv.ctx = mrun.WithStartHook(srv.ctx, func(context.Context) error {
 		srv.Addr = listener.Addr().String()
-		srv.ctx = mrun.WithThread(srv.ctx, func() error {
+		srv.ctx = mrun.WithThreads(srv.ctx, 1, func() error {
 			mlog.Info("serving requests", srv.ctx)
 			if err := srv.Serve(listener); !merr.Equal(err, http.ErrServerClosed) {
 				mlog.Error("error serving listener", srv.ctx, merr.Context(err))
