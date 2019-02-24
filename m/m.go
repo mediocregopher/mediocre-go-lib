@@ -57,7 +57,9 @@ func ServiceContext() context.Context {
 // Start performs the work of populating configuration parameters and triggering
 // the start event. It will return once the Start event has completed running.
 func Start(ctx context.Context) {
-	mlog.Info("populating configuration", ctx)
+	// no logging should happen before populate, primarily because log-level
+	// hasn't been populated yet, but also because it makes help output on cli
+	// look weird.
 	if err := mcfg.Populate(ctx, CfgSource()); err != nil {
 		mlog.Fatal("error populating configuration", ctx, merr.Context(err))
 	} else if err := mrun.Start(ctx); err != nil {
