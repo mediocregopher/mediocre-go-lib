@@ -106,5 +106,5 @@ func main() {
 	})
 
 	ctx, _ = mhttp.WithListeningServer(ctx, authHandler)
-	m.Run(ctx)
+	m.StartWaitStop(ctx)
 }

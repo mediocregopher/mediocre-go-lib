@@ -54,27 +54,33 @@ func ServiceContext() context.Context {
 	return ctx
 }
 
-// Run performs the work of populating configuration parameters, triggering the
-// start event, waiting for an interrupt, and then triggering the stop event.
-// Run will block until the stop event is done. If any errors are encountered a
-// fatal is thrown.
-func Run(ctx context.Context) {
-	log := mlog.From(ctx)
+// Start performs the work of populating configuration parameters and triggering
+// the start event. It will return once the Start event has completed running.
+func Start(ctx context.Context) {
+	mlog.Info("populating configuration", ctx)
 	if err := mcfg.Populate(ctx, CfgSource()); err != nil {
-		log.Fatal("error populating configuration", ctx, merr.Context(err))
+		mlog.Fatal("error populating configuration", ctx, merr.Context(err))
 	} else if err := mrun.Start(ctx); err != nil {
-		log.Fatal("error triggering start event", ctx, merr.Context(err))
+		mlog.Fatal("error triggering start event", ctx, merr.Context(err))
 	}
+}
+
+// StartWaitStop performs the work of populating configuration parameters,
+// triggering the start event, waiting for an interrupt, and then triggering the
+// stop event.  Run will block until the stop event is done. If any errors are
+// encountered a fatal is thrown.
+func StartWaitStop(ctx context.Context) {
+	Start(ctx)
 
 	{
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt)
 		s := <-ch
-		log.Info("signal received, stopping", mctx.Annotate(ctx, "signal", s))
+		mlog.Info("signal received, stopping", mctx.Annotate(ctx, "signal", s))
 	}
 
 	if err := mrun.Stop(ctx); err != nil {
-		log.Fatal("error triggering stop event", ctx, merr.Context(err))
+		mlog.Fatal("error triggering stop event", ctx, merr.Context(err))
 	}
-	log.Info("exiting process", ctx)
+	mlog.Info("exiting process", ctx)
 }
