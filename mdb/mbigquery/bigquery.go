@@ -66,7 +66,7 @@ func WithBigQuery(parent context.Context, gce *mdb.GCE) (context.Context, *BigQu
 		mlog.Info("connecting to bigquery", bq.ctx)
 		var err error
 		bq.Client, err = bigquery.NewClient(innerCtx, bq.gce.Project, bq.gce.ClientOptions()...)
-		return merr.Wrap(bq.ctx, err)
+		return merr.Wrap(err, bq.ctx)
 	})
 	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return bq.Client.Close()
@@ -100,12 +100,12 @@ func (bq *BigQuery) Table(
 	mlog.Debug("creating/grabbing table", bq.ctx)
 	schema, err := bigquery.InferSchema(schemaObj)
 	if err != nil {
-		return nil, nil, merr.Wrap(ctx, err)
+		return nil, nil, merr.Wrap(err, ctx)
 	}
 
 	ds := bq.Dataset(dataset)
 	if err := ds.Create(ctx, nil); err != nil && !isErrAlreadyExists(err) {
-		return nil, nil, merr.Wrap(ctx, err)
+		return nil, nil, merr.Wrap(err, ctx)
 	}
 
 	table := ds.Table(tableName)
@@ -114,7 +114,7 @@ func (bq *BigQuery) Table(
 		Schema: schema,
 	}
 	if err := table.Create(ctx, meta); err != nil && !isErrAlreadyExists(err) {
-		return nil, nil, merr.Wrap(ctx, err)
+		return nil, nil, merr.Wrap(err, ctx)
 	}
 	uploader := table.Uploader()
 

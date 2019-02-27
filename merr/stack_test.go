@@ -1,7 +1,6 @@
 package merr
 
 import (
-	"context"
 	"strings"
 	. "testing"
 
@@ -9,7 +8,7 @@ import (
 )
 
 func TestStack(t *T) {
-	foo := New(context.Background(), "test")
+	foo := New("test")
 	fooStack, ok := Stack(foo)
 	massert.Fatal(t, massert.Equal(true, ok))
 

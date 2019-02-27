@@ -90,7 +90,8 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 				break
 			}
 			if !pvOk {
-				return nil, merr.New(context.Background(), "unexpected config parameter", "param", arg)
+				ctx := mctx.Annotate(context.Background(), "param", arg)
+				return nil, merr.New("unexpected config parameter", ctx)
 			}
 		}
 
@@ -121,7 +122,8 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 		pvStrValOk = false
 	}
 	if pvOk && !pvStrValOk {
-		return nil, merr.New(p.Context, "param expected a value", "param", key)
+		ctx := mctx.Annotate(p.Context, "param", key)
+		return nil, merr.New("param expected a value", ctx)
 	}
 	return pvs, nil
 }

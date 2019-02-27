@@ -10,6 +10,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
@@ -69,11 +70,13 @@ func (u *UUID) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, uuidV0)
 	if !ok || len(strEnc) != hex.EncodedLen(16) {
-		return merr.Wrap(context.Background(), errMalformedUUID, "uuidStr", str)
+		ctx := mctx.Annotate(context.Background(), "uuidStr", str)
+		return merr.Wrap(errMalformedUUID, ctx)
 	}
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.Wrap(context.Background(), err, "uuidStr", str)
+		ctx := mctx.Annotate(context.Background(), "uuidStr", str)
+		return merr.Wrap(errMalformedUUID, ctx)
 	}
 	u.b = b
 	return nil

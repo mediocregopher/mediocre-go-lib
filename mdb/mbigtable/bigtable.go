@@ -74,7 +74,7 @@ func WithBigTable(parent context.Context, gce *mdb.GCE, defaultInstance string) 
 			bt.gce.Project, bt.Instance,
 			bt.gce.ClientOptions()...,
 		)
-		return merr.Wrap(bt.ctx, err)
+		return merr.Wrap(err, bt.ctx)
 	})
 	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return bt.Client.Close()
@@ -95,14 +95,14 @@ func (bt *Bigtable) EnsureTable(ctx context.Context, name string, colFams ...str
 	mlog.Debug("creating admin client", ctx)
 	adminClient, err := bigtable.NewAdminClient(ctx, bt.gce.Project, bt.Instance)
 	if err != nil {
-		return merr.Wrap(ctx, err)
+		return merr.Wrap(err, ctx)
 	}
 	defer adminClient.Close()
 
 	mlog.Debug("creating bigtable table (if needed)", ctx)
 	err = adminClient.CreateTable(ctx, name)
 	if err != nil && !isErrAlreadyExists(err) {
-		return merr.Wrap(ctx, err)
+		return merr.Wrap(err, ctx)
 	}
 
 	for _, colFam := range colFams {
@@ -110,7 +110,7 @@ func (bt *Bigtable) EnsureTable(ctx context.Context, name string, colFams ...str
 		mlog.Debug("creating bigtable column family (if needed)", ctx)
 		err := adminClient.CreateColumnFamily(ctx, name, colFam)
 		if err != nil && !isErrAlreadyExists(err) {
-			return merr.Wrap(ctx, err)
+			return merr.Wrap(err, ctx)
 		}
 	}
 

@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
 
@@ -59,7 +60,8 @@ func (pk PublicKey) verify(s Signature, r io.Reader) error {
 		return err
 	}
 	if err := rsa.VerifyPSS(&pk.PublicKey, crypto.SHA256, h.Sum(nil), s.sig, nil); err != nil {
-		return merr.Wrap(context.Background(), ErrInvalidSig, "sig", s)
+		ctx := mctx.Annotate(context.Background(), "sig", s)
+		return merr.Wrap(ErrInvalidSig, ctx)
 	}
 	return nil
 }
@@ -89,12 +91,14 @@ func (pk *PublicKey) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, pubKeyV0)
 	if !ok || len(strEnc) <= hex.EncodedLen(8) {
-		return merr.Wrap(context.Background(), errMalformedPublicKey, "pubKeyStr", str)
+		ctx := mctx.Annotate(context.Background(), "pubKeyStr", str)
+		return merr.Wrap(errMalformedPublicKey, ctx)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.Wrap(context.Background(), err, "pubKeyStr", str)
+		ctx := mctx.Annotate(context.Background(), "pubKeyStr", str)
+		return merr.Wrap(err, ctx)
 	}
 
 	pk.E = int(binary.BigEndian.Uint64(b))
@@ -185,17 +189,17 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, privKeyV0)
 	if !ok {
-		return merr.Wrap(context.Background(), errMalformedPrivateKey)
+		return merr.Wrap(errMalformedPrivateKey)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.Wrap(context.Background(), errMalformedPrivateKey)
+		return merr.Wrap(errMalformedPrivateKey)
 	}
 
 	e, n := binary.Uvarint(b)
 	if n <= 0 {
-		return merr.Wrap(context.Background(), errMalformedPrivateKey)
+		return merr.Wrap(errMalformedPrivateKey)
 	}
 	pk.PublicKey.E = int(e)
 	b = b[n:]
@@ -206,7 +210,7 @@ func (pk *PrivateKey) UnmarshalText(b []byte) error {
 		}
 		l, n := binary.Uvarint(b)
 		if n <= 0 {
-			err = merr.Wrap(context.Background(), errMalformedPrivateKey)
+			err = merr.Wrap(errMalformedPrivateKey)
 		}
 		b = b[n:]
 		i := new(big.Int)

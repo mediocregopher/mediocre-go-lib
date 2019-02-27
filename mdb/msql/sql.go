@@ -46,7 +46,7 @@ func WithMySQL(parent context.Context, defaultDB string) (context.Context, *SQL)
 		mlog.Info("connecting to mysql server", sql.ctx)
 		var err error
 		sql.DB, err = sqlx.ConnectContext(innerCtx, "mysql", dsn)
-		return merr.Wrap(sql.ctx, err)
+		return merr.Wrap(err, sql.ctx)
 	})
 	ctx = mrun.WithStopHook(ctx, func(innerCtx context.Context) error {
 		mlog.Info("closing connection to sql server", sql.ctx)

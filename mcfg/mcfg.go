@@ -110,8 +110,9 @@ func populate(params []Param, src Source) error {
 		if !p.Required {
 			continue
 		} else if _, ok := pvM[hash]; !ok {
-			return merr.New(p.Context, "required parameter is not set",
+			ctx := mctx.Annotate(p.Context,
 				"param", paramFullName(mctx.Path(p.Context), p.Name))
+			return merr.New("required parameter is not set", ctx)
 		}
 	}
 
@@ -133,7 +134,7 @@ func populate(params []Param, src Source) error {
 // of the Params which were provided by the respective Source.
 //
 // Source may be nil to indicate that no configuration is provided. Only default
-// values will be used, and if any paramaters are required this will error.
+// values will be used, and if any parameters are required this will error.
 func Populate(ctx context.Context, src Source) error {
 	return populate(collectParams(ctx), src)
 }

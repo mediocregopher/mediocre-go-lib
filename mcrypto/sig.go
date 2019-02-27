@@ -2,7 +2,6 @@ package mcrypto
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -67,12 +66,12 @@ func (s *Signature) UnmarshalText(b []byte) error {
 	str := string(b)
 	strEnc, ok := stripPrefix(str, sigV0)
 	if !ok || len(strEnc) < hex.EncodedLen(10) {
-		return merr.Wrap(context.Background(), errMalformedSig, "sigStr", str)
+		return merr.Wrap(errMalformedSig)
 	}
 
 	b, err := hex.DecodeString(strEnc)
 	if err != nil {
-		return merr.Wrap(context.Background(), err, "sigStr", str)
+		return merr.Wrap(err)
 	}
 
 	unixNano, b := int64(binary.BigEndian.Uint64(b[:8])), b[8:]
@@ -82,7 +81,7 @@ func (s *Signature) UnmarshalText(b []byte) error {
 		if err != nil {
 			return nil
 		} else if len(b) < 1+int(b[0]) {
-			err = merr.Wrap(context.Background(), errMalformedSig, "sigStr", str)
+			err = merr.Wrap(errMalformedSig)
 			return nil
 		}
 		out := b[1 : 1+b[0]]

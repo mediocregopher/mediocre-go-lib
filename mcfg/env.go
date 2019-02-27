@@ -59,7 +59,8 @@ func (env SourceEnv) Parse(params []Param) ([]ParamValue, error) {
 	for _, kv := range kvs {
 		split := strings.SplitN(kv, "=", 2)
 		if len(split) != 2 {
-			return nil, merr.New(context.Background(), "malformed environment key/value pair", "kv", kv)
+			ctx := mctx.Annotate(context.Background(), "kv", kv)
+			return nil, merr.New("malformed environment key/value pair", ctx)
 		}
 		k, v := split[0], split[1]
 		if p, ok := pM[k]; ok {

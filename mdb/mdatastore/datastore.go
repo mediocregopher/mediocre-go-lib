@@ -44,7 +44,7 @@ func WithDatastore(parent context.Context, gce *mdb.GCE) (context.Context, *Data
 		mlog.Info("connecting to datastore", ds.ctx)
 		var err error
 		ds.Client, err = datastore.NewClient(innerCtx, ds.gce.Project, ds.gce.ClientOptions()...)
-		return merr.Wrap(ds.ctx, err)
+		return merr.Wrap(err, ds.ctx)
 	})
 	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return ds.Client.Close()

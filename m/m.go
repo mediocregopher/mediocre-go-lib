@@ -6,7 +6,6 @@ package m
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 
@@ -43,9 +42,9 @@ func ServiceContext() context.Context {
 	ctx, logLevelStr := mcfg.WithString(ctx, "log-level", "info", "Maximum log level which will be printed.")
 	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
 		logLevel := mlog.LevelFromString(*logLevelStr)
-		log.Printf("setting log level to %v", logLevel)
 		if logLevel == nil {
-			return merr.New(ctx, "invalid log level", "log-level", *logLevelStr)
+			ctx := mctx.Annotate(ctx, "log-level", *logLevelStr)
+			return merr.New("invalid log level", ctx)
 		}
 		logger.SetMaxLevel(logLevel)
 		return nil

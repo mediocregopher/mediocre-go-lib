@@ -10,24 +10,41 @@ import (
 )
 
 func TestError(t *T) {
-	e := New(context.Background(), "foo",
+	massert.Fatal(t, massert.Nil(Wrap(nil)))
+
+	ctx := mctx.Annotate(context.Background(),
 		"a", "aaa aaa\n",
 		"c", "ccc\nccc\n",
-		"d\t", "weird key but ok",
-	)
-	exp := `foo
+		"d\t", "weird key but ok")
+
+	{
+		e := New("foo", ctx)
+		exp := `foo
 	* a: aaa aaa
 	* c: 
 		ccc
 		ccc
 	* d: weird key but ok
-	* errLoc: merr/merr_test.go:13`
-	massert.Fatal(t, massert.Equal(exp, e.Error()))
+	* errLoc: merr/merr_test.go:19`
+		massert.Fatal(t, massert.Equal(exp, e.Error()))
+	}
+
+	{
+		e := Wrap(errors.New("foo"), ctx)
+		exp := `foo
+	* a: aaa aaa
+	* c: 
+		ccc
+		ccc
+	* d: weird key but ok
+	* errLoc: merr/merr_test.go:31`
+		massert.Fatal(t, massert.Equal(exp, e.Error()))
+	}
 }
 
 func TestBase(t *T) {
 	errFoo, errBar := errors.New("foo"), errors.New("bar")
-	erFoo := Wrap(context.Background(), errFoo)
+	erFoo := Wrap(errFoo)
 	massert.Fatal(t, massert.All(
 		massert.Nil(Base(nil)),
 		massert.Equal(errFoo, Base(erFoo)),
@@ -45,7 +62,7 @@ func TestValue(t *T) {
 		massert.Nil(Value(nil, "foo")),
 	))
 
-	e1 := New(context.Background(), "foo")
+	e1 := New("foo")
 	e1 = WithValue(e1, "a", "A")
 	e2 := WithValue(errors.New("bar"), "a", "A")
 	massert.Fatal(t, massert.All(
@@ -62,7 +79,7 @@ func TestValue(t *T) {
 }
 
 func mkErr(ctx context.Context, err error) error {
-	return Wrap(ctx, err) // it's important that this is line 65
+	return Wrap(err, ctx)
 }
 
 func TestCtx(t *T) {
@@ -72,14 +89,14 @@ func TestCtx(t *T) {
 	// use mkErr so that it's easy to test that the stack info isn't overwritten
 	// when Wrap is called with ctxB.
 	e := mkErr(ctxA, errors.New("hello"))
-	e = Wrap(ctxB, e)
+	e = Wrap(e, ctxB)
 
 	err := massert.Equal(map[string]string{
 		"0":      "ZERO",
 		"1":      "ONE",
 		"2":      "TWO",
 		"err":    "hello",
-		"errLoc": "merr/merr_test.go:65",
+		"errLoc": "merr/merr_test.go:80",
 	}, mctx.Annotations(Context(e)).StringMap()).Assert()
 	if err != nil {
 		t.Fatal(err)

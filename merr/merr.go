@@ -57,7 +57,7 @@ func wrap(e error, cp bool) *err {
 
 	er2 := &err{
 		err:  er.err,
-		attr: make(map[interface{}]interface{}, len(er.attr)),
+		attr: make(map[interface{}]interface{}, len(er.attr)+1),
 	}
 	for k, v := range er.attr {
 		er2.attr[k] = v
@@ -102,46 +102,46 @@ func Value(e error, k interface{}) interface{} {
 
 // WrapSkip is like Wrap but also allows for skipping extra stack frames when
 // embedding the stack into the error.
-func WrapSkip(ctx context.Context, e error, skip int, kvs ...interface{}) error {
+func WrapSkip(e error, skip int, ctxs ...context.Context) error {
+	if e == nil {
+		return nil
+	}
+
 	er := wrap(e, true)
 	if _, ok := getStack(er); !ok {
 		setStack(er, skip+1)
 	}
 
-	if prevCtx, _ := er.attr[attrKeyCtx].(context.Context); prevCtx != nil {
-		ctx = mctx.MergeAnnotations(prevCtx, ctx)
-	}
-
-	if len(kvs) > 0 {
-		ctx = mctx.Annotate(ctx, kvs...)
+	ctx, _ := er.attr[attrKeyCtx].(context.Context)
+	if ctx != nil {
+		ctx = mctx.MergeAnnotationsInto(ctx, ctxs...)
+	} else if len(ctxs) > 0 {
+		ctx = mctx.MergeAnnotations(ctxs...)
 	}
 
 	er.attr[attrKeyCtx] = ctx
 	return er
 }
 
-// Wrap takes in an error and returns one which wraps it in merr's inner type,
-// embedding the given Context (which can later be retrieved by Ctx) at the same
-// time.
-//
-// For convenience, extra annotation information can be passed in here as well
-// via the kvs argument. See mctx.Annotate for more information.
+// Wrap returns a copy of the given error wrapped in merr's inner type. It will
+// perform an mctx.MergeAnnotations on the given Contexts to create a new
+// Context, and embed that in the returned error. If the given error already has
+// an embedded Context then ctxs will be merged into that.
 //
 // This function automatically embeds stack information into the error as it's
 // being stored, using WithStack, unless the error already has stack information
 // in it.
-func Wrap(ctx context.Context, e error, kvs ...interface{}) error {
-	return WrapSkip(ctx, e, 1, kvs...)
+//
+// Wrapping nil returns nil.
+func Wrap(e error, ctx ...context.Context) error {
+	return WrapSkip(e, 1, ctx...)
 }
 
 // New is a shortcut for:
-//	merr.Wrap(ctx, errors.New(str), kvs...)
-func New(ctx context.Context, str string, kvs ...interface{}) error {
-	return WrapSkip(ctx, errors.New(str), 1, kvs...)
+//	merr.Wrap(errors.New(str), ctxs...)
+func New(str string, ctxs ...context.Context) error {
+	return WrapSkip(errors.New(str), 1, ctxs...)
 }
-
-// TODO it would be more convenient in a lot of cases if New and Wrap took in a
-// list of Contexts.
 
 type annotateKey string
 

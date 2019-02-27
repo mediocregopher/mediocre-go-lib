@@ -278,9 +278,14 @@ func mergeAnnotations(ctxA, ctxB context.Context) context.Context {
 //
 // NOTE this will panic if no Contexts are passed in.
 func MergeAnnotations(ctxs ...context.Context) context.Context {
-	ctxA := ctxs[0]
-	for _, ctxB := range ctxs[1:] {
-		ctxA = mergeAnnotations(ctxA, ctxB)
+	return MergeAnnotationsInto(ctxs[0], ctxs[1:]...)
+}
+
+// MergeAnnotationsInto is a convenience function which works like
+// MergeAnnotations.
+func MergeAnnotationsInto(ctx context.Context, ctxs ...context.Context) context.Context {
+	for _, ctxB := range ctxs {
+		ctx = mergeAnnotations(ctx, ctxB)
 	}
-	return ctxA
+	return ctx
 }

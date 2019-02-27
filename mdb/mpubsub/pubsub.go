@@ -62,7 +62,7 @@ func WithPubSub(parent context.Context, gce *mdb.GCE) (context.Context, *PubSub)
 		mlog.Info("connecting to pubsub", ps.ctx)
 		var err error
 		ps.Client, err = pubsub.NewClient(innerCtx, ps.gce.Project, ps.gce.ClientOptions()...)
-		return merr.Wrap(ps.ctx, err)
+		return merr.Wrap(err, ps.ctx)
 	})
 	ctx = mrun.WithStopHook(ctx, func(context.Context) error {
 		return ps.Client.Close()
@@ -93,14 +93,14 @@ func (ps *PubSub) Topic(ctx context.Context, name string, create bool) (*Topic, 
 		if isErrAlreadyExists(err) {
 			t.topic = ps.Client.Topic(name)
 		} else if err != nil {
-			return nil, merr.Wrap(ctx, merr.Wrap(t.ctx, err))
+			return nil, merr.Wrap(err, t.ctx, ctx)
 		}
 	} else {
 		t.topic = ps.Client.Topic(name)
 		if exists, err := t.topic.Exists(t.ctx); err != nil {
-			return nil, merr.Wrap(ctx, merr.Wrap(t.ctx, err))
+			return nil, merr.Wrap(err, t.ctx, ctx)
 		} else if !exists {
-			return nil, merr.Wrap(ctx, merr.New(t.ctx, "topic dne"))
+			return nil, merr.New("topic dne", t.ctx, ctx)
 		}
 	}
 	return t, nil
@@ -110,7 +110,7 @@ func (ps *PubSub) Topic(ctx context.Context, name string, create bool) (*Topic, 
 func (t *Topic) Publish(ctx context.Context, data []byte) error {
 	_, err := t.topic.Publish(ctx, &Message{Data: data}).Get(ctx)
 	if err != nil {
-		return merr.Wrap(ctx, merr.Wrap(t.ctx, err))
+		return merr.Wrap(err, t.ctx, ctx)
 	}
 	return nil
 }
@@ -144,14 +144,14 @@ func (t *Topic) Subscription(ctx context.Context, name string, create bool) (*Su
 		if isErrAlreadyExists(err) {
 			s.sub = t.ps.Subscription(name)
 		} else if err != nil {
-			return nil, merr.Wrap(ctx, merr.Wrap(s.ctx, err))
+			return nil, merr.Wrap(err, s.ctx, ctx)
 		}
 	} else {
 		s.sub = t.ps.Subscription(name)
 		if exists, err := s.sub.Exists(ctx); err != nil {
-			return nil, merr.Wrap(ctx, merr.Wrap(s.ctx, err))
+			return nil, merr.Wrap(err, s.ctx, ctx)
 		} else if !exists {
-			return nil, merr.Wrap(ctx, merr.New(s.ctx, "sub dne"))
+			return nil, merr.New("sub dne", s.ctx, ctx)
 		}
 	}
 	return s, nil
@@ -350,7 +350,7 @@ func (s *Subscription) BatchConsume(
 		case ret := <-retCh:
 			return ret, nil
 		case <-ctx.Done():
-			return false, merr.Wrap(ctx, merr.New(s.ctx, "reading from batch grouping process timed out"))
+			return false, merr.New("reading from batch grouping process timed out", s.ctx, ctx)
 		}
 	}, opts)
 
