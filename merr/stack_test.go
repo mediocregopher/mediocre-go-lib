@@ -1,4 +1,4 @@
-package mctx
+package merr
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestStack(t *T) {
-	foo := WithStack(context.Background(), 0)
+	foo := New(context.Background(), "test")
 	fooStack, ok := Stack(foo)
 	massert.Fatal(t, massert.Equal(true, ok))
 

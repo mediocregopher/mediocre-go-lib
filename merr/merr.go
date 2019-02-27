@@ -47,7 +47,10 @@ func wrap(e error, cp bool) *err {
 
 	er, ok := e.(*err)
 	if !ok {
-		return &err{err: e}
+		return &err{
+			err:  e,
+			attr: make(map[interface{}]interface{}, 1),
+		}
 	} else if !cp {
 		return er
 	}
@@ -100,19 +103,21 @@ func Value(e error, k interface{}) interface{} {
 // WrapSkip is like Wrap but also allows for skipping extra stack frames when
 // embedding the stack into the error.
 func WrapSkip(ctx context.Context, e error, skip int, kvs ...interface{}) error {
-	prevCtx, _ := Value(e, attrKeyCtx).(context.Context)
-	if prevCtx != nil {
+	er := wrap(e, true)
+	if _, ok := getStack(er); !ok {
+		setStack(er, skip+1)
+	}
+
+	if prevCtx, _ := er.attr[attrKeyCtx].(context.Context); prevCtx != nil {
 		ctx = mctx.MergeAnnotations(prevCtx, ctx)
 	}
 
-	if _, ok := mctx.Stack(ctx); !ok {
-		ctx = mctx.WithStack(ctx, skip+1)
-	}
 	if len(kvs) > 0 {
 		ctx = mctx.Annotate(ctx, kvs...)
 	}
 
-	return WithValue(e, attrKeyCtx, ctx)
+	er.attr[attrKeyCtx] = ctx
+	return er
 }
 
 // Wrap takes in an error and returns one which wraps it in merr's inner type,
@@ -122,9 +127,9 @@ func WrapSkip(ctx context.Context, e error, skip int, kvs ...interface{}) error 
 // For convenience, extra annotation information can be passed in here as well
 // via the kvs argument. See mctx.Annotate for more information.
 //
-// This function automatically embeds stack information into the Context as it's
-// being stored, using mctx.WithStack, unless the error already has stack
-// information in it.
+// This function automatically embeds stack information into the error as it's
+// being stored, using WithStack, unless the error already has stack information
+// in it.
 func Wrap(ctx context.Context, e error, kvs ...interface{}) error {
 	return WrapSkip(ctx, e, 1, kvs...)
 }
@@ -146,7 +151,7 @@ func ctx(e error) context.Context {
 		ctx = context.Background()
 	}
 
-	if stack, ok := mctx.Stack(ctx); ok {
+	if stack, ok := Stack(e); ok {
 		ctx = mctx.Annotate(ctx, annotateKey("errLoc"), stack.String())
 	}
 	return ctx
@@ -156,9 +161,9 @@ func ctx(e error) context.Context {
 // or New. If none is embedded this uses context.Background().
 //
 // The returned Context will have annotated on it (see mctx.Annotate) the
-// underlying error's string (as returned by Error()) and the stack location in
-// the Context. Stack locations are automatically added by New and Wrap via
-// mctx.WithStack.
+// underlying error's string (as returned by Error()) and the error's stack
+// location. Stack locations are automatically added by New and Wrap via
+// WithStack.
 //
 // If this error is nil this returns context.Background().
 func Context(e error) context.Context {
