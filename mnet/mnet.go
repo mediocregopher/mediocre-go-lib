@@ -130,7 +130,11 @@ func (l *Listener) Accept() (net.Conn, error) {
 // logging.
 func (l *Listener) Close() error {
 	mlog.Info("listener closing", l.ctx)
-	return l.Listener.Close()
+	if l.Listener != nil {
+		return l.Listener.Close()
+	} else {
+		return l.PacketConn.Close()
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
