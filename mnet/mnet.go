@@ -88,14 +88,15 @@ func WithListener(ctx context.Context, opts ...ListenerOpt) (context.Context, *L
 
 		if lOpts.isPacketConn() {
 			l.PacketConn, err = net.ListenPacket(lOpts.proto, *addr)
+			l.ctx = mctx.Annotate(l.ctx, "addr", l.PacketConn.LocalAddr().String())
 		} else {
 			l.Listener, err = net.Listen(lOpts.proto, *addr)
+			l.ctx = mctx.Annotate(l.ctx, "addr", l.Listener.Addr().String())
 		}
 		if err != nil {
 			return merr.Wrap(err, l.ctx)
 		}
 
-		l.ctx = mctx.Annotate(l.ctx, "addr", l.Addr().String())
 		mlog.Info("listening", l.ctx)
 		return nil
 	})
