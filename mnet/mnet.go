@@ -9,13 +9,18 @@ import (
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
 // Listener is returned by WithListen and simply wraps a net.Listener.
 type Listener struct {
+	// One of these will be populated during the start hook, depending on the
+	// protocol configured.
 	net.Listener
+	net.PacketConn
+
 	ctx context.Context
 
 	// If set to true before mrun's stop event is run, the stop event will not
@@ -26,6 +31,13 @@ type Listener struct {
 type listenerOpts struct {
 	proto       string
 	defaultAddr string
+}
+
+func (lOpts listenerOpts) isPacketConn() bool {
+	proto := strings.ToLower(lOpts.proto)
+	return strings.HasPrefix(proto, "udp") ||
+		proto == "unixgram" ||
+		strings.HasPrefix(proto, "ip")
 }
 
 // ListenerOpt is a value which adjusts the behavior of WithListener.
@@ -69,12 +81,21 @@ func WithListener(ctx context.Context, opts ...ListenerOpt) (context.Context, *L
 
 	l.ctx = mrun.WithStartHook(l.ctx, func(context.Context) error {
 		var err error
-		if l.Listener, err = net.Listen(lOpts.proto, *addr); err != nil {
-			return err
-		}
+
 		l.ctx = mctx.Annotate(l.ctx,
 			"proto", lOpts.proto,
-			"addr", l.Addr().String())
+			"addr", *addr)
+
+		if lOpts.isPacketConn() {
+			l.PacketConn, err = net.ListenPacket(lOpts.proto, *addr)
+		} else {
+			l.Listener, err = net.Listen(lOpts.proto, *addr)
+		}
+		if err != nil {
+			return merr.Wrap(err, l.ctx)
+		}
+
+		l.ctx = mctx.Annotate(l.ctx, "addr", l.Addr().String())
 		mlog.Info("listening", l.ctx)
 		return nil
 	})
