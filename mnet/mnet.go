@@ -23,18 +23,41 @@ type Listener struct {
 	NoCloseOnStop bool
 }
 
+type listenerOpts struct {
+	proto       string
+	defaultAddr string
+}
+
+// ListenerOpt is a value which adjusts the behavior of WithListener.
+type ListenerOpt func(*listenerOpts)
+
+// ListenerProtocol adjusts the protocol which the Listener uses. The default is
+// "tcp".
+func ListenerProtocol(proto string) ListenerOpt {
+	return func(opts *listenerOpts) {
+		opts.proto = proto
+	}
+}
+
+// ListenerDefaultAddr adjusts the defaultAddr which the Listener will use. The
+// addr will still be configurable via mcfg regardless of what this is set to.
+// The default is ":0".
+func ListenerAddr(defaultAddr string) ListenerOpt {
+	return func(opts *listenerOpts) {
+		opts.defaultAddr = defaultAddr
+	}
+}
+
 // WithListener returns a Listener which will be initialized when the start
 // event is triggered on the returned Context (see mrun.Start), and closed when
 // the stop event is triggered on the returned Context (see mrun.Stop).
-//
-// network defaults to "tcp" if empty. defaultAddr defaults to ":0" if empty,
-// and will be configurable via mcfg.
-func WithListener(ctx context.Context, network, defaultAddr string) (context.Context, *Listener) {
-	if network == "" {
-		network = "tcp"
+func WithListener(ctx context.Context, opts ...ListenerOpt) (context.Context, *Listener) {
+	lOpts := listenerOpts{
+		proto:       "tcp",
+		defaultAddr: ":0",
 	}
-	if defaultAddr == "" {
-		defaultAddr = ":0"
+	for _, opt := range opts {
+		opt(&lOpts)
 	}
 
 	l := &Listener{
@@ -42,13 +65,16 @@ func WithListener(ctx context.Context, network, defaultAddr string) (context.Con
 	}
 
 	var addr *string
-	l.ctx, addr = mcfg.WithString(l.ctx, "listen-addr", defaultAddr, strings.ToUpper(network)+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+	l.ctx, addr = mcfg.WithString(l.ctx, "listen-addr", lOpts.defaultAddr, strings.ToUpper(lOpts.proto)+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+
 	l.ctx = mrun.WithStartHook(l.ctx, func(context.Context) error {
 		var err error
-		if l.Listener, err = net.Listen(network, *addr); err != nil {
+		if l.Listener, err = net.Listen(lOpts.proto, *addr); err != nil {
 			return err
 		}
-		l.ctx = mctx.Annotate(l.ctx, "addr", l.Addr().String())
+		l.ctx = mctx.Annotate(l.ctx,
+			"proto", lOpts.proto,
+			"addr", l.Addr().String())
 		mlog.Info("listening", l.ctx)
 		return nil
 	})

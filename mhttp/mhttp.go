@@ -38,7 +38,7 @@ func WithListeningServer(ctx context.Context, h http.Handler) (context.Context, 
 	}
 
 	var listener *mnet.Listener
-	srv.ctx, listener = mnet.WithListener(srv.ctx, "tcp", "")
+	srv.ctx, listener = mnet.WithListener(srv.ctx)
 	listener.NoCloseOnStop = true // http.Server.Shutdown will do this
 
 	srv.ctx = mrun.WithStartHook(srv.ctx, func(context.Context) error {
