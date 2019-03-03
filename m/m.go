@@ -64,6 +64,7 @@ func Start(ctx context.Context) {
 	} else if err := mrun.Start(ctx); err != nil {
 		mlog.Fatal("error triggering start event", ctx, merr.Context(err))
 	}
+	mlog.Info("start hooks completed", ctx)
 }
 
 // StartWaitStop performs the work of populating configuration parameters,
