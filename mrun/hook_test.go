@@ -35,14 +35,16 @@ func TestHooks(t *T) {
 	ctxB = mctx.WithChild(ctxB, ctxB1)
 	ctx = mctx.WithChild(ctx, ctxB)
 
+	ctx = WithHook(ctx, 0, mkHook(7))
+
 	massert.Fatal(t, massert.All(
 		massert.Nil(TriggerHooks(ctx, 0)),
-		massert.Equal([]int{1, 2, 3, 4, 5, 6}, out),
+		massert.Equal([]int{1, 2, 3, 4, 5, 6, 7}, out),
 	))
 
 	out = nil
 	massert.Fatal(t, massert.All(
 		massert.Nil(TriggerHooksReverse(ctx, 0)),
-		massert.Equal([]int{6, 5, 4, 3, 2, 1}, out),
+		massert.Equal([]int{7, 6, 5, 4, 3, 2, 1}, out),
 	))
 }
