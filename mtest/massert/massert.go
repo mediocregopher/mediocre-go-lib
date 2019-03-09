@@ -98,7 +98,7 @@ type assertion struct {
 	stack []runtime.Frame
 }
 
-func newAssertion(assertFn func() error, descr string, skip int) Assertion {
+func newFutureAssertion(assertFn func() error, descr string, skip int) Assertion {
 	pcs := make([]uintptr, maxStackLen)
 	// first skip is for runtime.Callers, second is for newAssertion, third is
 	// for whatever is calling newAssertion
@@ -132,6 +132,11 @@ func newAssertion(assertFn func() error, descr string, skip int) Assertion {
 	return a
 }
 
+func newAssertion(assertFn func() error, descr string, skip int) Assertion {
+	err := assertFn()
+	return newFutureAssertion(func() error { return err }, descr, skip+1)
+}
+
 func (a *assertion) Assert() error {
 	return a.fn()
 }
@@ -148,6 +153,8 @@ func (a *assertion) Stack() []runtime.Frame {
 
 // Fatal is a convenience function which performs the Assertion and calls Fatal
 // on the testing.T instance if the assertion fails.
+//
+// TODO rename to Require
 func Fatal(t *testing.T, a Assertion) {
 	if err := a.Assert(); err != nil {
 		t.Fatal(err)
@@ -156,6 +163,8 @@ func Fatal(t *testing.T, a Assertion) {
 
 // Error is a convenience function which performs the Assertion and calls Error
 // on the testing.T instance if the assertion fails.
+//
+// TODO rename to Assert
 func Error(t *testing.T, a Assertion) {
 	if err := a.Assert(); err != nil {
 		t.Error(err)
@@ -283,11 +292,15 @@ func None(aa ...Assertion) Assertion {
 }
 
 // Err returns an Assertion which always fails with the given error.
+//
+// TODO rename to Error
 func Err(err error) Assertion {
 	return newAssertion(func() error { return err }, "", 0)
 }
 
 // Errf is like Err but allows for a formatted string.
+//
+// TODO rename to Errorf
 func Errf(str string, args ...interface{}) Assertion {
 	return Err(fmt.Errorf(str, args...))
 }
@@ -399,6 +412,8 @@ func Subset(set, subset interface{}) Assertion {
 // Has asserts that the given set has the given element as a value in it. The
 // set may be an array, a slice, or a map, and if it's a map then the elem will
 // need to be a value in it.
+//
+// TODO rename to HasValue
 func Has(set, elem interface{}) Assertion {
 	setVV, err := toSet(set, false)
 	if err != nil {
@@ -438,6 +453,8 @@ func HasKey(set, elem interface{}) Assertion {
 // Len asserts that the given set has the given number of elements in it. The
 // set may be an array, a slice, or a map. A nil value'd set is considered to be
 // a length of zero.
+//
+// TODO rename to Length
 func Len(set interface{}, length int) Assertion {
 	setVV, err := toSet(set, false)
 	if err != nil {

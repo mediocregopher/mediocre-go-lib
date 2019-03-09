@@ -107,6 +107,16 @@ func TestEqual(t *T) {
 		Equal(1, uint64(1)),
 		Equal("foo", "bar"),
 	))
+
+	// test that assertions take in the value at the moment the assertion is
+	// made
+	var aa []Assertion
+	m := map[string]int{}
+	m["foo"] = 1
+	aa = append(aa, Equal(1, m["foo"]))
+	m["foo"] = 2
+	aa = append(aa, Equal(2, m["foo"]))
+	Fatal(t, All(aa...))
 }
 
 func TestNil(t *T) {
