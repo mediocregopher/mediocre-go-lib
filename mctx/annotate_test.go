@@ -20,19 +20,19 @@ func TestAnnotate(t *T) {
 
 	parentAnnotations := Annotations(parent)
 	childAnnotations := Annotations(child)
-	massert.Fatal(t, massert.All(
-		massert.Len(parentAnnotations, 2),
-		massert.Has(parentAnnotations, Annotation{Key: "a", Value: "foo"}),
-		massert.Has(parentAnnotations, Annotation{Key: "b", Value: "bar"}),
+	massert.Require(t,
+		massert.Length(parentAnnotations, 2),
+		massert.HasValue(parentAnnotations, Annotation{Key: "a", Value: "foo"}),
+		massert.HasValue(parentAnnotations, Annotation{Key: "b", Value: "bar"}),
 
-		massert.Len(childAnnotations, 4),
-		massert.Has(childAnnotations, Annotation{Key: "a", Value: "foo"}),
-		massert.Has(childAnnotations, Annotation{Key: "b", Value: "bar"}),
-		massert.Has(childAnnotations,
+		massert.Length(childAnnotations, 4),
+		massert.HasValue(childAnnotations, Annotation{Key: "a", Value: "foo"}),
+		massert.HasValue(childAnnotations, Annotation{Key: "b", Value: "bar"}),
+		massert.HasValue(childAnnotations,
 			Annotation{Key: "a", Path: []string{"child"}, Value: "FOO"}),
-		massert.Has(childAnnotations,
+		massert.HasValue(childAnnotations,
 			Annotation{Key: "c", Path: []string{"child"}, Value: "BAZ"}),
-	))
+	)
 }
 
 func TestAnnotationsStringMap(t *T) {
@@ -46,7 +46,7 @@ func TestAnnotationsStringMap(t *T) {
 		{Key: B(2), Path: []string{"foo"}, Value: "TWO"},
 	}
 
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal(map[string]string{
 			"0":               "zero",
 			"1(/)":            "one",
@@ -65,7 +65,7 @@ func TestAnnotationsStringMap(t *T) {
 				"2(mctx.B)": "TWO",
 			},
 		}, aa.StringMapByPath()),
-	))
+	)
 }
 
 func TestMergeAnnotations(t *T) {

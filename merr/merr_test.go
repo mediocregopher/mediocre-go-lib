@@ -10,7 +10,7 @@ import (
 )
 
 func TestError(t *T) {
-	massert.Fatal(t, massert.Nil(Wrap(nil)))
+	massert.Require(t, massert.Nil(Wrap(nil)))
 
 	ctx := mctx.Annotate(context.Background(),
 		"a", "aaa aaa\n",
@@ -25,8 +25,8 @@ func TestError(t *T) {
 		ccc
 		ccc
 	* d: weird key but ok
-	* errLoc: merr/merr_test.go:19`
-		massert.Fatal(t, massert.Equal(exp, e.Error()))
+	* errLoc: merr/merr_test.go:21`
+		massert.Require(t, massert.Equal(exp, e.Error()))
 	}
 
 	{
@@ -37,15 +37,15 @@ func TestError(t *T) {
 		ccc
 		ccc
 	* d: weird key but ok
-	* errLoc: merr/merr_test.go:31`
-		massert.Fatal(t, massert.Equal(exp, e.Error()))
+	* errLoc: merr/merr_test.go:33`
+		massert.Require(t, massert.Equal(exp, e.Error()))
 	}
 }
 
 func TestBase(t *T) {
 	errFoo, errBar := errors.New("foo"), errors.New("bar")
 	erFoo := Wrap(errFoo)
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Nil(Base(nil)),
 		massert.Equal(errFoo, Base(erFoo)),
 		massert.Equal(errBar, Base(errBar)),
@@ -53,29 +53,29 @@ func TestBase(t *T) {
 		massert.Not(massert.Equal(errBar, Base(erFoo))),
 		massert.Equal(true, Equal(errFoo, erFoo)),
 		massert.Equal(false, Equal(errBar, erFoo)),
-	))
+	)
 }
 
 func TestValue(t *T) {
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Nil(WithValue(nil, "foo", "bar")),
 		massert.Nil(Value(nil, "foo")),
-	))
+	)
 
 	e1 := New("foo")
 	e1 = WithValue(e1, "a", "A")
 	e2 := WithValue(errors.New("bar"), "a", "A")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("A", Value(e1, "a")),
 		massert.Equal("A", Value(e2, "a")),
-	))
+	)
 
 	e3 := WithValue(e2, "a", "AAA")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("A", Value(e1, "a")),
 		massert.Equal("A", Value(e2, "a")),
 		massert.Equal("AAA", Value(e3, "a")),
-	))
+	)
 }
 
 func mkErr(ctx context.Context, err error) error {
@@ -96,7 +96,7 @@ func TestCtx(t *T) {
 		"1":      "ONE",
 		"2":      "TWO",
 		"err":    "hello",
-		"errLoc": "merr/merr_test.go:80",
+		"errLoc": "merr/merr_test.go:82",
 	}, mctx.Annotations(Context(e)).StringMap()).Assert()
 	if err != nil {
 		t.Fatal(err)

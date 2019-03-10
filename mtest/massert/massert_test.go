@@ -96,12 +96,12 @@ func TestNone(t *T) {
 }
 
 func TestEqual(t *T) {
-	Fatal(t, All(
+	Require(t,
 		Equal(1, 1),
 		Equal("foo", "foo"),
-	))
+	)
 
-	Fatal(t, None(
+	Require(t, None(
 		Equal(1, 2),
 		Equal(1, int64(1)),
 		Equal(1, uint64(1)),
@@ -116,20 +116,20 @@ func TestEqual(t *T) {
 	aa = append(aa, Equal(1, m["foo"]))
 	m["foo"] = 2
 	aa = append(aa, Equal(2, m["foo"]))
-	Fatal(t, All(aa...))
+	Require(t, aa...)
 }
 
 func TestNil(t *T) {
-	Fatal(t, All(
+	Require(t,
 		Nil(nil),
 		Nil([]byte(nil)),
 		Nil(map[int]int(nil)),
 		Nil((*struct{})(nil)),
 		Nil(interface{}(nil)),
 		Nil(error(nil)),
-	))
+	)
 
-	Fatal(t, None(
+	Require(t, None(
 		Nil(1),
 		Nil([]byte("foo")),
 		Nil(map[int]int{1: 1}),
@@ -140,7 +140,7 @@ func TestNil(t *T) {
 }
 
 func TestSubset(t *T) {
-	Fatal(t, All(
+	Require(t,
 		Subset([]int{1, 2, 3}, []int{}),
 		Subset([]int{1, 2, 3}, []int{1}),
 		Subset([]int{1, 2, 3}, []int{2}),
@@ -152,9 +152,9 @@ func TestSubset(t *T) {
 		Subset(map[int]int{1: 1, 2: 2}, map[int]int{}),
 		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 1}),
 		Subset(map[int]int{1: 1, 2: 2}, map[int]int{1: 1, 2: 2}),
-	))
+	)
 
-	Fatal(t, None(
+	Require(t, None(
 		Subset([]int{}, []int{1, 2, 3}),
 		Subset([]int{1, 2, 3}, []int{4}),
 		Subset([]int{1, 2, 3}, []int{1, 3, 2, 4}),
@@ -167,45 +167,45 @@ func TestSubset(t *T) {
 	m := map[int]int{1: 1, 2: 2}
 	a := Subset(m, map[int]int{1: 1})
 	m[1] = 2
-	Fatal(t, a)
+	Require(t, a)
 }
 
-func TestHas(t *T) {
-	Fatal(t, All(
-		Has([]int{1}, 1),
-		Has([]int{1, 2}, 1),
-		Has([]int{2, 1}, 1),
-		Has(map[int]int{1: 1}, 1),
-		Has(map[int]int{1: 2}, 2),
-		Has(map[int]int{1: 2, 2: 1}, 1),
-		Has(map[int]int{1: 2, 2: 2}, 2),
-	))
+func TestHasValue(t *T) {
+	Require(t,
+		HasValue([]int{1}, 1),
+		HasValue([]int{1, 2}, 1),
+		HasValue([]int{2, 1}, 1),
+		HasValue(map[int]int{1: 1}, 1),
+		HasValue(map[int]int{1: 2}, 2),
+		HasValue(map[int]int{1: 2, 2: 1}, 1),
+		HasValue(map[int]int{1: 2, 2: 2}, 2),
+	)
 
-	Fatal(t, None(
-		Has([]int{}, 1),
-		Has([]int{1}, 2),
-		Has([]int{2, 1}, 3),
-		Has(map[int]int{}, 1),
-		Has(map[int]int{1: 1}, 2),
-		Has(map[int]int{1: 2}, 1),
-		Has(map[int]int{1: 2, 2: 1}, 3),
+	Require(t, None(
+		HasValue([]int{}, 1),
+		HasValue([]int{1}, 2),
+		HasValue([]int{2, 1}, 3),
+		HasValue(map[int]int{}, 1),
+		HasValue(map[int]int{1: 1}, 2),
+		HasValue(map[int]int{1: 2}, 1),
+		HasValue(map[int]int{1: 2, 2: 1}, 3),
 	))
 
 	// make sure changes don't retroactively fail the assertion
 	m := map[int]int{1: 1}
-	a := Has(m, 1)
+	a := HasValue(m, 1)
 	m[1] = 2
-	Fatal(t, a)
+	Require(t, a)
 }
 
 func TestHasKey(t *T) {
-	Fatal(t, All(
+	Require(t,
 		HasKey(map[int]int{1: 1}, 1),
 		HasKey(map[int]int{1: 1, 2: 2}, 1),
 		HasKey(map[int]int{1: 1, 2: 2}, 2),
-	))
+	)
 
-	Fatal(t, None(
+	Require(t, None(
 		HasKey(map[int]int{}, 1),
 		HasKey(map[int]int{2: 2}, 1),
 	))
@@ -214,36 +214,36 @@ func TestHasKey(t *T) {
 	m := map[int]int{1: 1}
 	a := HasKey(m, 1)
 	delete(m, 1)
-	Fatal(t, a)
+	Require(t, a)
 
 }
 
-func TestLen(t *T) {
-	Fatal(t, All(
-		Len([]int(nil), 0),
-		Len([]int{}, 0),
-		Len([]int{1}, 1),
-		Len([]int{1, 2}, 2),
-		Len(map[int]int(nil), 0),
-		Len(map[int]int{}, 0),
-		Len(map[int]int{1: 1}, 1),
-		Len(map[int]int{1: 1, 2: 2}, 2),
-	))
+func TestLength(t *T) {
+	Require(t,
+		Length([]int(nil), 0),
+		Length([]int{}, 0),
+		Length([]int{1}, 1),
+		Length([]int{1, 2}, 2),
+		Length(map[int]int(nil), 0),
+		Length(map[int]int{}, 0),
+		Length(map[int]int{1: 1}, 1),
+		Length(map[int]int{1: 1, 2: 2}, 2),
+	)
 
-	Fatal(t, None(
-		Len([]int(nil), 1),
-		Len([]int{}, 1),
-		Len([]int{1}, 0),
-		Len([]int{1}, 2),
-		Len([]int{1, 2}, 1),
-		Len([]int{1, 2}, 3),
-		Len(map[int]int(nil), 1),
-		Len(map[int]int{}, 1),
+	Require(t, None(
+		Length([]int(nil), 1),
+		Length([]int{}, 1),
+		Length([]int{1}, 0),
+		Length([]int{1}, 2),
+		Length([]int{1, 2}, 1),
+		Length([]int{1, 2}, 3),
+		Length(map[int]int(nil), 1),
+		Length(map[int]int{}, 1),
 	))
 
 	// make sure changes don't retroactively fail the assertion
 	m := map[int]int{1: 1}
-	a := Len(m, 1)
+	a := Length(m, 1)
 	m[2] = 2
-	Fatal(t, a)
+	Require(t, a)
 }

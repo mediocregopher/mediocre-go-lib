@@ -151,23 +151,23 @@ func (a *assertion) Stack() []runtime.Frame {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Fatal is a convenience function which performs the Assertion and calls Fatal
-// on the testing.T instance if the assertion fails.
-//
-// TODO rename to Require
-func Fatal(t *testing.T, a Assertion) {
-	if err := a.Assert(); err != nil {
-		t.Fatal(err)
+// Require is a convenience function which performs the Assertions and calls
+// Fatal on the testing.T instance for the first Assertion which fails.
+func Require(t *testing.T, aa ...Assertion) {
+	for _, a := range aa {
+		if err := a.Assert(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
-// Error is a convenience function which performs the Assertion and calls Error
-// on the testing.T instance if the assertion fails.
-//
-// TODO rename to Assert
-func Error(t *testing.T, a Assertion) {
-	if err := a.Assert(); err != nil {
-		t.Error(err)
+// Assert is a convenience function which performs the Assertion and calls Error
+// on the testing.T instance for the first Assertion which fails.
+func Assert(t *testing.T, aa ...Assertion) {
+	for _, a := range aa {
+		if err := a.Assert(); err != nil {
+			t.Error(err)
+		}
 	}
 }
 
@@ -291,18 +291,14 @@ func None(aa ...Assertion) Assertion {
 	return newAssertion(fn, fmtMultiDescr("None", aa...), 0)
 }
 
-// Err returns an Assertion which always fails with the given error.
-//
-// TODO rename to Error
-func Err(err error) Assertion {
+// Error returns an Assertion which always fails with the given error.
+func Error(err error) Assertion {
 	return newAssertion(func() error { return err }, "", 0)
 }
 
-// Errf is like Err but allows for a formatted string.
-//
-// TODO rename to Errorf
-func Errf(str string, args ...interface{}) Assertion {
-	return Err(fmt.Errorf(str, args...))
+// Errorf is like Err but allows for a formatted string.
+func Errorf(str string, args ...interface{}) Assertion {
+	return Error(fmt.Errorf(str, args...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,10 +309,6 @@ func toStr(i interface{}) string {
 
 // Equal asserts that the two values are exactly equal, and uses the
 // reflect.DeepEqual function to determine if they are.
-//
-// TODO this does not currently handle the case of creating the Assertion using
-// a reference type (like a map), changing one of the map's keys, and then
-// calling Assert.
 func Equal(a, b interface{}) Assertion {
 	return newAssertion(func() error {
 		if !reflect.DeepEqual(a, b) {
@@ -409,12 +401,10 @@ func Subset(set, subset interface{}) Assertion {
 	}, toStr(set)+" has subset "+toStr(subset), 0)
 }
 
-// Has asserts that the given set has the given element as a value in it. The
-// set may be an array, a slice, or a map, and if it's a map then the elem will
-// need to be a value in it.
-//
-// TODO rename to HasValue
-func Has(set, elem interface{}) Assertion {
+// HasValue asserts that the given set has the given element as a value in it.
+// The set may be an array, a slice, or a map, and if it's a map then the elem
+// will need to be a value in it.
+func HasValue(set, elem interface{}) Assertion {
 	setVV, err := toSet(set, false)
 	if err != nil {
 		panic(err)
@@ -450,12 +440,10 @@ func HasKey(set, elem interface{}) Assertion {
 	}, toStr(set)+" has key "+toStr(elem), 0)
 }
 
-// Len asserts that the given set has the given number of elements in it. The
+// Length asserts that the given set has the given number of elements in it. The
 // set may be an array, a slice, or a map. A nil value'd set is considered to be
 // a length of zero.
-//
-// TODO rename to Length
-func Len(set interface{}, length int) Assertion {
+func Length(set interface{}, length int) Assertion {
 	setVV, err := toSet(set, false)
 	if err != nil {
 		panic(err)

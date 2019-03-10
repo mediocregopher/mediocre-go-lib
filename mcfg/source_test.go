@@ -148,7 +148,7 @@ func (scs srcCommonState) assert(s Source) error {
 		return err
 	}
 	return massert.All(
-		massert.Len(gotPVs, len(scs.expPVs)),
+		massert.Length(gotPVs, len(scs.expPVs)),
 		massert.Subset(scs.expPVs, gotPVs),
 	).Assert()
 }
@@ -163,12 +163,12 @@ func TestSources(t *T) {
 		SourceCLI{Args: []string{"--a=1", "--b=666"}},
 		SourceEnv{Env: []string{"B=2", "C=3"}},
 	})
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Nil(err),
 		massert.Equal(1, *a),
 		massert.Equal(2, *b),
 		massert.Equal(3, *c),
-	))
+	)
 }
 
 func TestSourceParamValues(t *T) {
@@ -184,10 +184,10 @@ func TestSourceParamValues(t *T) {
 		{Path: []string{"foo"}, Name: "b", Value: json.RawMessage(`"bbb"`)},
 		{Path: []string{"foo"}, Name: "c", Value: json.RawMessage("true")},
 	})
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Nil(err),
 		massert.Equal(4, *a),
 		massert.Equal("bbb", *b),
 		massert.Equal(true, *c),
-	))
+	)
 }

@@ -12,11 +12,11 @@ import (
 )
 
 func TestTruncate(t *T) {
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("abc", Truncate("abc", 4)),
 		massert.Equal("abc", Truncate("abc", 3)),
 		massert.Equal("ab...", Truncate("abc", 2)),
-	))
+	)
 }
 
 func TestLogger(t *T) {
@@ -31,7 +31,7 @@ func TestLogger(t *T) {
 		select {
 		case <-l.testMsgWrittenCh:
 		case <-time.After(1 * time.Second):
-			return massert.Errf("waited too long for msg to write")
+			return massert.Errorf("waited too long for msg to write")
 		}
 		out, err := buf.ReadString('\n')
 		return massert.All(
@@ -45,11 +45,11 @@ func TestLogger(t *T) {
 	l.Info("bar")
 	l.Warn("baz")
 	l.Error("buz")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		assertOut(`{"level":"INFO","descr":"bar"}`),
 		assertOut(`{"level":"WARN","descr":"baz"}`),
 		assertOut(`{"level":"ERROR","descr":"buz"}`),
-	))
+	)
 
 	ctx := context.Background()
 
@@ -58,10 +58,10 @@ func TestLogger(t *T) {
 	l.Info("bar")
 	l.Warn("baz")
 	l.Error("buz", mctx.Annotate(ctx, "a", "b", "c", "d"))
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		assertOut(`{"level":"WARN","descr":"baz"}`),
 		assertOut(`{"level":"ERROR","descr":"buz","annotations":{"/":{"a":"b","c":"d"}}}`),
-	))
+	)
 
 	l2 := l.Clone()
 	l2.SetMaxLevel(InfoLevel)
@@ -72,9 +72,9 @@ func TestLogger(t *T) {
 	l2.Info("bar")
 	l2.Warn("baz")
 	l.Error("buz")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		assertOut(`{"level":"INFO","descr":"BAR"}`),
 		assertOut(`{"level":"WARN","descr":"BAZ"}`),
 		assertOut(`{"level":"ERROR","descr":"buz"}`),
-	))
+	)
 }

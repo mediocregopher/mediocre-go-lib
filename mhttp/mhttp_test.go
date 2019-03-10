@@ -45,17 +45,17 @@ func TestAddXForwardedFor(t *T) {
 		AddXForwardedFor(r, ipStr)
 		var a massert.Assertion
 		if expected == "" {
-			a = massert.Len(r.Header["X-Forwarded-For"], 0)
+			a = massert.Length(r.Header["X-Forwarded-For"], 0)
 		} else {
 			a = massert.All(
-				massert.Len(r.Header["X-Forwarded-For"], 1),
+				massert.Length(r.Header["X-Forwarded-For"], 1),
 				massert.Equal(expected, r.Header["X-Forwarded-For"][0]),
 			)
 		}
 		return massert.Comment(a, "prev:%#v ipStr:%q", prev, ipStr)
 	}
 
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		assertXFF(nil, "invalid", ""),
 		assertXFF(nil, "::1", ""),
 		assertXFF([]string{"8.0.0.0"}, "invalid", "8.0.0.0"),
@@ -66,5 +66,5 @@ func TestAddXForwardedFor(t *T) {
 		assertXFF([]string{"8.0.0.0, 8.0.0.1"}, "8.0.0.2", "8.0.0.0, 8.0.0.1, 8.0.0.2"),
 		assertXFF([]string{"8.0.0.0, 8.0.0.1", "8.0.0.2"}, "8.0.0.3",
 			"8.0.0.0, 8.0.0.1, 8.0.0.2, 8.0.0.3"),
-	))
+	)
 }

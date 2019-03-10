@@ -18,19 +18,19 @@ func TestInheritance(t *T) {
 	ctx = WithChild(ctx, ctx1)
 	ctx = WithChild(ctx, ctx2)
 
-	massert.Fatal(t, massert.All(
-		massert.Len(Path(ctx), 0),
+	massert.Require(t,
+		massert.Length(Path(ctx), 0),
 		massert.Equal(Path(ctx1), []string{"1"}),
 		massert.Equal(Path(ctx1a), []string{"1", "a"}),
 		massert.Equal(Path(ctx1b), []string{"1", "b"}),
 		massert.Equal(Path(ctx2), []string{"2"}),
-	))
+	)
 
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal([]context.Context{ctx1, ctx2}, Children(ctx)),
 		massert.Equal([]context.Context{ctx1a, ctx1b}, Children(ctx1)),
-		massert.Len(Children(ctx2), 0),
-	))
+		massert.Length(Children(ctx2), 0),
+	)
 }
 
 func TestBreadFirstVisit(t *T) {
@@ -50,7 +50,7 @@ func TestBreadFirstVisit(t *T) {
 			got = append(got, ctx)
 			return true
 		})
-		massert.Fatal(t,
+		massert.Require(t,
 			massert.Equal([]context.Context{ctx, ctx1, ctx2, ctx1a, ctx1b}, got),
 		)
 	}
@@ -64,7 +64,7 @@ func TestBreadFirstVisit(t *T) {
 			got = append(got, ctx)
 			return true
 		})
-		massert.Fatal(t,
+		massert.Require(t,
 			massert.Equal([]context.Context{ctx, ctx1, ctx2}, got),
 		)
 	}
@@ -74,44 +74,44 @@ func TestLocalValues(t *T) {
 
 	// test with no value set
 	ctx := context.Background()
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Nil(LocalValue(ctx, "foo")),
-		massert.Len(LocalValues(ctx), 0),
-	))
+		massert.Length(LocalValues(ctx), 0),
+	)
 
 	// test basic value retrieval
 	ctx = WithLocalValue(ctx, "foo", "bar")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("bar", LocalValue(ctx, "foo")),
 		massert.Equal(
 			map[interface{}]interface{}{"foo": "bar"},
 			LocalValues(ctx),
 		),
-	))
+	)
 
 	// test that doesn't conflict with WithValue
 	ctx = context.WithValue(ctx, "foo", "WithValue bar")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("bar", LocalValue(ctx, "foo")),
 		massert.Equal("WithValue bar", ctx.Value("foo")),
 		massert.Equal(
 			map[interface{}]interface{}{"foo": "bar"},
 			LocalValues(ctx),
 		),
-	))
+	)
 
 	// test that child doesn't get values
 	child := NewChild(ctx, "child")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("bar", LocalValue(ctx, "foo")),
 		massert.Nil(LocalValue(child, "foo")),
-		massert.Len(LocalValues(child), 0),
-	))
+		massert.Length(LocalValues(child), 0),
+	)
 
 	// test that values on child don't affect parent values
 	child = WithLocalValue(child, "foo", "child bar")
 	ctx = WithChild(ctx, child)
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("bar", LocalValue(ctx, "foo")),
 		massert.Equal("child bar", LocalValue(child, "foo")),
 		massert.Equal(
@@ -122,12 +122,12 @@ func TestLocalValues(t *T) {
 			map[interface{}]interface{}{"foo": "child bar"},
 			LocalValues(child),
 		),
-	))
+	)
 
 	// test that two With calls on the same context generate distinct contexts
 	childA := WithLocalValue(child, "foo2", "baz")
 	childB := WithLocalValue(child, "foo2", "buz")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("bar", LocalValue(ctx, "foo")),
 		massert.Equal("child bar", LocalValue(child, "foo")),
 		massert.Nil(LocalValue(child, "foo2")),
@@ -141,16 +141,16 @@ func TestLocalValues(t *T) {
 			map[interface{}]interface{}{"foo": "child bar", "foo2": "buz"},
 			LocalValues(childB),
 		),
-	))
+	)
 
 	// if a value overwrites a previous one the newer one should show in
 	// LocalValues
 	ctx = WithLocalValue(ctx, "foo", "barbar")
-	massert.Fatal(t, massert.All(
+	massert.Require(t,
 		massert.Equal("barbar", LocalValue(ctx, "foo")),
 		massert.Equal(
 			map[interface{}]interface{}{"foo": "barbar"},
 			LocalValues(ctx),
 		),
-	))
+	)
 }

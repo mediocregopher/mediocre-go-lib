@@ -35,10 +35,10 @@ func TestBasic(t *T) {
 			t.Fatal(err)
 		}
 		readColFam := readRow[colFam]
-		massert.Fatal(t, massert.All(
-			massert.Len(readColFam, 1),
+		massert.Require(t,
+			massert.Length(readColFam, 1),
 			massert.Equal(colFam+":col", readColFam[0].Column),
 			massert.Equal([]byte("bar"), readColFam[0].Value),
-		))
+		)
 	})
 }

@@ -39,14 +39,14 @@ func TestServiceCtx(t *T) {
 
 		mlog.From(ctxA).Info("foo", ctxA)
 		mlog.From(ctxA).Debug("bar", ctxA)
-		massert.Fatal(t, massert.All(
-			massert.Len(msgs, 2),
+		massert.Require(t,
+			massert.Length(msgs, 2),
 			massert.Equal(msgs[0].Level.String(), "INFO"),
 			massert.Equal(msgs[0].Description, "foo"),
 			massert.Equal(msgs[0].Contexts, []context.Context{ctxA}),
 			massert.Equal(msgs[1].Level.String(), "DEBUG"),
 			massert.Equal(msgs[1].Description, "bar"),
 			massert.Equal(msgs[1].Contexts, []context.Context{ctxA}),
-		))
+		)
 	})
 }

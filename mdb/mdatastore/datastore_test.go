@@ -35,6 +35,6 @@ func TestBasic(t *T) {
 			t.Fatal(err)
 		}
 
-		massert.Fatal(t, massert.Equal(val, val2))
+		massert.Require(t, massert.Equal(val, val2))
 	})
 }
