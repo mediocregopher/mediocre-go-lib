@@ -16,25 +16,19 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-// CfgSource returns an mcfg.Source which takes in configuration info from the
-// environment and from the CLI.
-func CfgSource() mcfg.Source {
-	return mcfg.Sources{
-		mcfg.SourceEnv{},
-		mcfg.SourceCLI{},
-	}
-}
+type cfgSrcKey int
 
-// ServiceContext returns a Context which should be used as the root Context
-// when creating long running services, such as an RPC service or database.
+// ProcessContext returns a Context which should be used as the root Context
+// when implementing most processes.
 //
 // The returned Context will automatically handle setting up global
 // configuration parameters like "log-level", as well as an http endpoint where
 // debug information about the running process can be accessed.
-//
-// TODO set up the debug endpoint.
-func ServiceContext() context.Context {
+func ProcessContext() context.Context {
 	ctx := context.Background()
+
+	// embed confuration source which should be used into the context.
+	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(mcfg.SourceCLI{}))
 
 	// set up log level handling
 	logger := mlog.NewLogger()
@@ -53,13 +47,36 @@ func ServiceContext() context.Context {
 	return ctx
 }
 
+// ServiceContext extends ProcessContext so that it better supports long running
+// processes which are expected to handle requests from outside clients.
+//
+// Additional behavior it adds includes setting up an http endpoint where debug
+// information about the running process can be accessed.
+func ServiceContext() context.Context {
+	ctx := ProcessContext()
+
+	// services expect to use many different configuration sources
+	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(mcfg.Sources{
+		mcfg.SourceEnv{},
+		mcfg.SourceCLI{},
+	}))
+
+	// TODO set up the debug endpoint.
+	return ctx
+}
+
 // Start performs the work of populating configuration parameters and triggering
 // the start event. It will return once the Start event has completed running.
 func Start(ctx context.Context) {
+	src, _ := ctx.Value(cfgSrcKey(0)).(mcfg.Source)
+	if src == nil {
+		mlog.Fatal("ctx not sourced from m package", ctx)
+	}
+
 	// no logging should happen before populate, primarily because log-level
 	// hasn't been populated yet, but also because it makes help output on cli
 	// look weird.
-	if err := mcfg.Populate(ctx, CfgSource()); err != nil {
+	if err := mcfg.Populate(ctx, src); err != nil {
 		mlog.Fatal("error populating configuration", ctx, merr.Context(err))
 	} else if err := mrun.Start(ctx); err != nil {
 		mlog.Fatal("error triggering start event", ctx, merr.Context(err))
