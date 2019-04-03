@@ -37,6 +37,12 @@ type SourceCLI struct {
 	Args []string // if nil then os.Args[1:] is used
 
 	DisableHelpPage bool
+
+	// Normally if any unexpected Arg value is encountered Parse will error out.
+	// If instead TailCallback is set then it will be called whenever the first
+	// unexpected Arg is encountered, and will not error out. TailCallback will
+	// be given a slice of Args starting at the first unexpected element.
+	TailCallback func([]string)
 }
 
 const (
@@ -61,12 +67,12 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 	var (
 		key        string
 		p          Param
-		pvOk       bool
+		pOk        bool
 		pvStrVal   string
 		pvStrValOk bool
 	)
-	for _, arg := range args {
-		if pvOk {
+	for i, arg := range args {
+		if pOk {
 			pvStrVal = arg
 			pvStrValOk = true
 		} else if !cli.DisableHelpPage && arg == cliHelpArg {
@@ -76,7 +82,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 		} else {
 			for key, p = range pM {
 				if arg == key {
-					pvOk = true
+					pOk = true
 					break
 				}
 
@@ -84,24 +90,27 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 				if !strings.HasPrefix(arg, prefix) {
 					continue
 				}
-				pvOk = true
+				pOk = true
 				pvStrVal = strings.TrimPrefix(arg, prefix)
 				pvStrValOk = true
 				break
 			}
-			if !pvOk {
+			if !pOk {
+				if cli.TailCallback != nil {
+					cli.TailCallback(args[i:])
+					return pvs, nil
+				}
 				ctx := mctx.Annotate(context.Background(), "param", arg)
 				return nil, merr.New("unexpected config parameter", ctx)
 			}
 		}
 
-		// pvOk is always true at this point, and so pv is filled in
+		// pOk is always true at this point, and so p is filled in
 
 		// As a special case for CLI, if a boolean has no value set it means it
 		// is true.
 		if p.IsBool && !pvStrValOk {
 			pvStrVal = "true"
-			pvStrValOk = true
 		} else if !pvStrValOk {
 			// everything else should have a value. if pvStrVal isn't filled it
 			// means the next arg should be one. Continue the loop, it'll get
@@ -117,11 +126,11 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 
 		key = ""
 		p = Param{}
-		pvOk = false
+		pOk = false
 		pvStrVal = ""
 		pvStrValOk = false
 	}
-	if pvOk && !pvStrValOk {
+	if pOk && !pvStrValOk {
 		ctx := mctx.Annotate(p.Context, "param", key)
 		return nil, merr.New("param expected a value", ctx)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
+	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/mchk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,5 +102,54 @@ func TestSourceCLI(t *T) {
 
 	if err := chk.RunFor(2 * time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSourceCLITailCallback(t *T) {
+	ctx := context.Background()
+	ctx, _ = WithInt(ctx, "foo", 5, "")
+	ctx, _ = WithBool(ctx, "bar", "")
+
+	var tail []string
+	src := SourceCLI{TailCallback: func(gotTail []string) {
+		tail = gotTail
+	}}
+
+	type testCase struct {
+		args    []string
+		expTail []string
+	}
+
+	cases := []testCase{
+		{
+			args:    []string{"--foo", "5"},
+			expTail: []string{},
+		},
+		{
+			args:    []string{"--foo", "5", "a", "b", "c"},
+			expTail: []string{"a", "b", "c"},
+		},
+		{
+			args:    []string{"--foo=5", "a", "b", "c"},
+			expTail: []string{"a", "b", "c"},
+		},
+		{
+			args:    []string{"--foo", "5", "--bar"},
+			expTail: []string{},
+		},
+		{
+			args:    []string{"--foo", "5", "--bar", "a", "b", "c"},
+			expTail: []string{"a", "b", "c"},
+		},
+	}
+
+	for _, tc := range cases {
+		tail = []string{}
+		src.Args = tc.args
+		err := Populate(ctx, src)
+		massert.Require(t, massert.Comment(massert.All(
+			massert.Nil(err),
+			massert.Equal(tc.expTail, tail),
+		), "tc: %#v", tc))
 	}
 }
