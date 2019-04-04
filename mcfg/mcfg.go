@@ -72,7 +72,15 @@ func paramHash(path []string, name string) string {
 	return paramFullName(path, name) + "/" + hStr
 }
 
-func populate(params []Param, src Source) error {
+// Populate uses the Source to populate the values of all Params which were
+// added to the given Context, and all of its children. Populate may be called
+// multiple times with the same Context, each time will only affect the values
+// of the Params which were provided by the respective Source.
+//
+// Source may be nil to indicate that no configuration is provided. Only default
+// values will be used, and if any parameters are required this will error.
+func Populate(ctx context.Context, src Source) error {
+	params := collectParams(ctx)
 	if src == nil {
 		src = ParamValues(nil)
 	}
@@ -89,7 +97,7 @@ func populate(params []Param, src Source) error {
 		pM[hash] = p
 	}
 
-	pvs, err := src.Parse(params)
+	pvs, err := src.Parse(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -126,15 +134,4 @@ func populate(params []Param, src Source) error {
 	}
 
 	return nil
-}
-
-// Populate uses the Source to populate the values of all Params which were
-// added to the given Context, and all of its children. Populate may be called
-// multiple times with the same Context, each time will only affect the values
-// of the Params which were provided by the respective Source.
-//
-// Source may be nil to indicate that no configuration is provided. Only default
-// values will be used, and if any parameters are required this will error.
-func Populate(ctx context.Context, src Source) error {
-	return populate(collectParams(ctx), src)
 }

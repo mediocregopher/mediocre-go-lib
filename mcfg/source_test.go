@@ -143,7 +143,7 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 // ParamValues
 func (scs srcCommonState) assert(s Source) error {
 	root := scs.mkRoot()
-	gotPVs, err := s.Parse(collectParams(root))
+	gotPVs, err := s.Parse(root, collectParams(root))
 	if err != nil {
 		return err
 	}

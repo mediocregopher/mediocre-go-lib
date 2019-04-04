@@ -1,6 +1,7 @@
 package mcfg
 
 import (
+	"context"
 	"encoding/json"
 )
 
@@ -13,7 +14,8 @@ type ParamValue struct {
 }
 
 // Source parses ParamValues out of a particular configuration source, given a
-// sorted set of possible Params to parse.
+// sorted set of possible Params to parse, and the Context from with the Params
+// were extracted.
 //
 // Source should not return ParamValues which were not explicitly set to a value
 // by the configuration source.
@@ -23,7 +25,7 @@ type ParamValue struct {
 // ParamValues which do not correspond to any of the passed in Params. These
 // will be ignored in Populate.
 type Source interface {
-	Parse([]Param) ([]ParamValue, error)
+	Parse(context.Context, []Param) ([]ParamValue, error)
 }
 
 // ParamValues is simply a slice of ParamValue elements, which implements Parse
@@ -31,7 +33,7 @@ type Source interface {
 type ParamValues []ParamValue
 
 // Parse implements the method for the Source interface.
-func (pvs ParamValues) Parse([]Param) ([]ParamValue, error) {
+func (pvs ParamValues) Parse(context.Context, []Param) ([]ParamValue, error) {
 	return pvs, nil
 }
 
@@ -41,10 +43,10 @@ func (pvs ParamValues) Parse([]Param) ([]ParamValue, error) {
 type Sources []Source
 
 // Parse implements the method for the Source interface.
-func (ss Sources) Parse(params []Param) ([]ParamValue, error) {
+func (ss Sources) Parse(ctx context.Context, params []Param) ([]ParamValue, error) {
 	var pvs []ParamValue
 	for _, s := range ss {
-		innerPVs, err := s.Parse(params)
+		innerPVs, err := s.Parse(ctx, params)
 		if err != nil {
 			return nil, err
 		}

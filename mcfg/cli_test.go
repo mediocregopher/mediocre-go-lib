@@ -3,6 +3,7 @@ package mcfg
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	. "testing"
 	"time"
@@ -107,17 +108,10 @@ func TestSourceCLI(t *T) {
 	}
 }
 
-func TestSourceCLITailCallback(t *T) {
+func TestWithCLITail(t *T) {
 	ctx := context.Background()
 	ctx, _ = WithInt(ctx, "foo", 5, "")
 	ctx, _ = WithBool(ctx, "bar", "")
-
-	var tail []string
-	src := &SourceCLI{
-		TailCallback: func(gotTail []string) {
-			tail = gotTail
-		},
-	}
 
 	type testCase struct {
 		args    []string
@@ -127,7 +121,7 @@ func TestSourceCLITailCallback(t *T) {
 	cases := []testCase{
 		{
 			args:    []string{"--foo", "5"},
-			expTail: []string{},
+			expTail: nil,
 		},
 		{
 			args:    []string{"--foo", "5", "a", "b", "c"},
@@ -139,7 +133,7 @@ func TestSourceCLITailCallback(t *T) {
 		},
 		{
 			args:    []string{"--foo", "5", "--bar"},
-			expTail: []string{},
+			expTail: nil,
 		},
 		{
 			args:    []string{"--foo", "5", "--bar", "a", "b", "c"},
@@ -148,12 +142,25 @@ func TestSourceCLITailCallback(t *T) {
 	}
 
 	for _, tc := range cases {
-		tail = []string{}
-		src.Args = tc.args
-		err := Populate(ctx, src)
+		ctx, tail := WithCLITail(ctx)
+		err := Populate(ctx, &SourceCLI{Args: tc.args})
 		massert.Require(t, massert.Comment(massert.All(
 			massert.Nil(err),
-			massert.Equal(tc.expTail, tail),
+			massert.Equal(tc.expTail, *tail),
 		), "tc: %#v", tc))
 	}
+}
+
+func ExampleWithCLITail() {
+	ctx := context.Background()
+	ctx, foo := WithInt(ctx, "foo", 1, "Description of foo.")
+	ctx, tail := WithCLITail(ctx)
+	ctx, bar := WithString(ctx, "bar", "defaultVal", "Description of bar.")
+
+	err := Populate(ctx, &SourceCLI{
+		Args: []string{"--foo=100", "BADARG", "--bar", "BAR"},
+	})
+
+	fmt.Printf("err:%v foo:%v bar:%v tail:%#v\n", err, *foo, *bar, *tail)
+	// Output: err:<nil> foo:100 bar:defaultVal tail:[]string{"BADARG", "--bar", "BAR"}
 }

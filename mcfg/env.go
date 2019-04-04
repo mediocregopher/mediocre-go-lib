@@ -43,7 +43,7 @@ func (env *SourceEnv) expectedName(path []string, name string) string {
 }
 
 // Parse implements the method for the Source interface
-func (env *SourceEnv) Parse(params []Param) ([]ParamValue, error) {
+func (env *SourceEnv) Parse(ctx context.Context, params []Param) ([]ParamValue, error) {
 	kvs := env.Env
 	if kvs == nil {
 		kvs = os.Environ()
