@@ -160,8 +160,8 @@ func TestSources(t *T) {
 	ctx, c := WithRequiredInt(ctx, "c", "")
 
 	err := Populate(ctx, Sources{
-		SourceCLI{Args: []string{"--a=1", "--b=666"}},
-		SourceEnv{Env: []string{"B=2", "C=3"}},
+		&SourceCLI{Args: []string{"--a=1", "--b=666"}},
+		&SourceEnv{Env: []string{"B=2", "C=3"}},
 	})
 	massert.Require(t,
 		massert.Nil(err),

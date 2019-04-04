@@ -11,7 +11,7 @@ import (
 func TestSourceEnv(t *T) {
 	type state struct {
 		srcCommonState
-		SourceEnv
+		*SourceEnv
 	}
 
 	type params struct {
@@ -22,7 +22,9 @@ func TestSourceEnv(t *T) {
 		Init: func() mchk.State {
 			var s state
 			s.srcCommonState = newSrcCommonState()
-			s.SourceEnv.Env = make([]string, 0, 16)
+			s.SourceEnv = &SourceEnv{
+				Env: make([]string, 0, 16),
+			}
 			return s
 		},
 		Next: func(ss mchk.State) mchk.Action {

@@ -53,7 +53,7 @@ const (
 )
 
 // Parse implements the method for the Source interface
-func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
+func (cli *SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 	args := cli.Args
 	if cli.Args == nil {
 		args = os.Args[1:]
@@ -137,7 +137,7 @@ func (cli SourceCLI) Parse(params []Param) ([]ParamValue, error) {
 	return pvs, nil
 }
 
-func (cli SourceCLI) cliParams(params []Param) (map[string]Param, error) {
+func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 	m := map[string]Param{}
 	for _, p := range params {
 		key := strings.Join(append(mctx.Path(p.Context), p.Name), cliKeyJoin)
@@ -146,7 +146,7 @@ func (cli SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 	return m, nil
 }
 
-func (cli SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
+func (cli *SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
 	type pEntry struct {
 		arg string
 		Param

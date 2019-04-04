@@ -28,7 +28,7 @@ func ProcessContext() context.Context {
 	ctx := context.Background()
 
 	// embed confuration source which should be used into the context.
-	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(mcfg.SourceCLI{}))
+	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(new(mcfg.SourceCLI)))
 
 	// set up log level handling
 	logger := mlog.NewLogger()
@@ -57,8 +57,8 @@ func ServiceContext() context.Context {
 
 	// services expect to use many different configuration sources
 	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(mcfg.Sources{
-		mcfg.SourceEnv{},
-		mcfg.SourceCLI{},
+		new(mcfg.SourceEnv),
+		new(mcfg.SourceCLI),
 	}))
 
 	// TODO set up the debug endpoint.

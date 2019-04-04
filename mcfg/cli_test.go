@@ -26,7 +26,7 @@ func TestSourceCLIHelp(t *T) {
 	buf := new(bytes.Buffer)
 	pM, err := src.cliParams(collectParams(ctx))
 	require.NoError(t, err)
-	SourceCLI{}.printHelp(buf, pM)
+	new(SourceCLI).printHelp(buf, pM)
 
 	exp := `
 --baz2 (Required)
@@ -49,7 +49,7 @@ func TestSourceCLIHelp(t *T) {
 func TestSourceCLI(t *T) {
 	type state struct {
 		srcCommonState
-		SourceCLI
+		*SourceCLI
 	}
 
 	type params struct {
@@ -61,7 +61,9 @@ func TestSourceCLI(t *T) {
 		Init: func() mchk.State {
 			var s state
 			s.srcCommonState = newSrcCommonState()
-			s.SourceCLI.Args = make([]string, 0, 16)
+			s.SourceCLI = &SourceCLI{
+				Args: make([]string, 0, 16),
+			}
 			return s
 		},
 		Next: func(ss mchk.State) mchk.Action {
@@ -111,9 +113,11 @@ func TestSourceCLITailCallback(t *T) {
 	ctx, _ = WithBool(ctx, "bar", "")
 
 	var tail []string
-	src := SourceCLI{TailCallback: func(gotTail []string) {
-		tail = gotTail
-	}}
+	src := &SourceCLI{
+		TailCallback: func(gotTail []string) {
+			tail = gotTail
+		},
+	}
 
 	type testCase struct {
 		args    []string
