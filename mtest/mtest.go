@@ -50,7 +50,8 @@ func Run(ctx context.Context, t *testing.T, body func()) {
 		env = append(env, tup[0]+"="+tup[1])
 	}
 
-	if err := mcfg.Populate(ctx, &mcfg.SourceEnv{Env: env}); err != nil {
+	ctx, err := mcfg.Populate(ctx, &mcfg.SourceEnv{Env: env})
+	if err != nil {
 		t.Fatal(err)
 	} else if err := mrun.Start(ctx); err != nil {
 		t.Fatal(err)

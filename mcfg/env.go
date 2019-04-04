@@ -43,12 +43,13 @@ func (env *SourceEnv) expectedName(path []string, name string) string {
 }
 
 // Parse implements the method for the Source interface
-func (env *SourceEnv) Parse(ctx context.Context, params []Param) (context.Context, []ParamValue, error) {
+func (env *SourceEnv) Parse(ctx context.Context) (context.Context, []ParamValue, error) {
 	kvs := env.Env
 	if kvs == nil {
 		kvs = os.Environ()
 	}
 
+	params := CollectParams(ctx)
 	pM := map[string]Param{}
 	for _, p := range params {
 		name := env.expectedName(mctx.Path(p.Context), p.Name)

@@ -13,14 +13,13 @@ type ParamValue struct {
 	Value json.RawMessage
 }
 
-// Source parses ParamValues out of a particular configuration source, given a
-// sorted set of possible Params to parse, and the Context from with the Params
-// were extracted.
+// Source parses ParamValues out of a particular configuration source, given the
+// Context which the Params were added to (via WithInt, WithString, etc...).
+// CollectParams can be used to retrieve these Params.
 //
 // It's possible for Parsing to affect the Context itself, for example in the
 // case of sub-commands. For this reason Parse can return a Context, which will
-// get used for subsequent Parse commands inside, and then returned from,
-// Populate.
+// get used for subsequent Parse commands inside Populate.
 //
 // Source should not return ParamValues which were not explicitly set to a value
 // by the configuration source.
@@ -30,7 +29,7 @@ type ParamValue struct {
 // ParamValues which do not correspond to any of the passed in Params. These
 // will be ignored in Populate.
 type Source interface {
-	Parse(context.Context, []Param) (context.Context, []ParamValue, error)
+	Parse(context.Context) (context.Context, []ParamValue, error)
 }
 
 // ParamValues is simply a slice of ParamValue elements, which implements Parse
@@ -38,7 +37,7 @@ type Source interface {
 type ParamValues []ParamValue
 
 // Parse implements the method for the Source interface.
-func (pvs ParamValues) Parse(ctx context.Context, _ []Param) (context.Context, []ParamValue, error) {
+func (pvs ParamValues) Parse(ctx context.Context) (context.Context, []ParamValue, error) {
 	return ctx, pvs, nil
 }
 
@@ -48,12 +47,12 @@ func (pvs ParamValues) Parse(ctx context.Context, _ []Param) (context.Context, [
 type Sources []Source
 
 // Parse implements the method for the Source interface.
-func (ss Sources) Parse(ctx context.Context, params []Param) (context.Context, []ParamValue, error) {
+func (ss Sources) Parse(ctx context.Context) (context.Context, []ParamValue, error) {
 	var pvs []ParamValue
 	for _, s := range ss {
 		var innerPVs []ParamValue
 		var err error
-		if ctx, innerPVs, err = s.Parse(ctx, params); err != nil {
+		if ctx, innerPVs, err = s.Parse(ctx); err != nil {
 			return nil, nil, err
 		}
 		pvs = append(pvs, innerPVs...)

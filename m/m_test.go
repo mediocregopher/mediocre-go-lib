@@ -31,7 +31,7 @@ func TestServiceCtx(t *T) {
 		ctx = mctx.WithChild(ctx, ctxA)
 
 		params := mcfg.ParamValues{{Name: "log-level", Value: json.RawMessage(`"DEBUG"`)}}
-		if err := mcfg.Populate(ctx, params); err != nil {
+		if _, err := mcfg.Populate(ctx, params); err != nil {
 			t.Fatal(err)
 		} else if err := mrun.Start(ctx); err != nil {
 			t.Fatal(err)

@@ -17,6 +17,7 @@ type cliKey int
 
 const (
 	cliKeyTailPtr cliKey = iota
+	cliKeySubCmdM
 )
 
 // WithCLITail returns a Context which modifies the behavior of SourceCLI's
@@ -39,6 +40,45 @@ func populateCLITail(ctx context.Context, tail []string) bool {
 		*tailPtr = tail
 	}
 	return ok
+}
+
+type subCmd struct {
+	name, descr string
+	flag        *bool
+	callback    func(context.Context) context.Context
+}
+
+// WithCLISubCommand establishes a sub-command which can be activated on the
+// command-line. When a sub-command is given on the command-line, the bool
+// returned for that sub-command will be set to true.
+//
+// Additionally, the Context which was passed into Parse (i.e. the one passed
+// into Populate) will be passed into the given callback, and the returned one
+// used for subsequent parsing. This allows for setting sub-command specific
+// Params, sub-command specific runtime behavior (via mrun.WithStartHook),
+// support for sub-sub-commands, and more. The callback may be nil.
+//
+// If any sub-commands have been defined on a Context which is passed into
+// Parse, it is assumed that a sub-command is required on the command-line. The
+// exception is if a sub-command with a name of "" has been defined; if so, it
+// will be used as the intended sub-command if none is specified.
+//
+// Sub-commands must be specified before any other options on the command-line.
+func WithCLISubCommand(ctx context.Context, name, descr string, callback func(context.Context) context.Context) (context.Context, *bool) {
+	m, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
+	if m == nil {
+		m = map[string]subCmd{}
+		ctx = context.WithValue(ctx, cliKeySubCmdM, m)
+	}
+
+	flag := new(bool)
+	m[name] = subCmd{
+		name:     name,
+		descr:    descr,
+		flag:     flag,
+		callback: callback,
+	}
+	return ctx, flag
 }
 
 // SourceCLI is a Source which will parse configuration from the CLI.
@@ -75,16 +115,56 @@ const (
 )
 
 // Parse implements the method for the Source interface
-func (cli *SourceCLI) Parse(ctx context.Context, params []Param) (context.Context, []ParamValue, error) {
+func (cli *SourceCLI) Parse(ctx context.Context) (context.Context, []ParamValue, error) {
 	args := cli.Args
 	if cli.Args == nil {
 		args = os.Args[1:]
 	}
+	return cli.parse(ctx, nil, args)
+}
 
-	pM, err := cli.cliParams(params)
+func (cli *SourceCLI) parse(
+	ctx context.Context,
+	subCmdPrefix, args []string,
+) (
+	context.Context,
+	[]ParamValue,
+	error,
+) {
+	pM, err := cli.cliParams(CollectParams(ctx))
 	if err != nil {
 		return nil, nil, err
 	}
+	subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
+
+	printHelpAndExit := func() {
+		cli.printHelp(os.Stderr, subCmdPrefix, subCmdM, pM)
+		os.Stderr.Sync()
+		os.Exit(1)
+	}
+
+	// if sub-commands were defined on this Context then handle that first. One
+	// of them should have been given, in which case send the Context through
+	// the callback to obtain a new one (which presumably has further config
+	// options the previous didn't) and call parse again.
+	if len(subCmdM) > 0 {
+		subCmd, args, ok := cli.getSubCmd(subCmdM, args)
+		if !ok {
+			printHelpAndExit()
+		}
+		ctx = context.WithValue(ctx, cliKeySubCmdM, nil)
+		if subCmd.callback != nil {
+			ctx = subCmd.callback(ctx)
+		}
+		if subCmd.name != "" {
+			subCmdPrefix = append(subCmdPrefix, subCmd.name)
+		}
+		*subCmd.flag = true
+		return cli.parse(ctx, subCmdPrefix, args)
+	}
+
+	// if sub-commands were not set, then proceed with normal command-line arg
+	// processing.
 	pvs := make([]ParamValue, 0, len(args))
 	var (
 		key        string
@@ -98,9 +178,7 @@ func (cli *SourceCLI) Parse(ctx context.Context, params []Param) (context.Contex
 			pvStrVal = arg
 			pvStrValOk = true
 		} else if !cli.DisableHelpPage && arg == cliHelpArg {
-			cli.printHelp(os.Stdout, pM)
-			os.Stdout.Sync()
-			os.Exit(1)
+			printHelpAndExit()
 		} else {
 			for key, p = range pM {
 				if arg == key {
@@ -159,6 +237,23 @@ func (cli *SourceCLI) Parse(ctx context.Context, params []Param) (context.Contex
 	return ctx, pvs, nil
 }
 
+func (cli *SourceCLI) getSubCmd(subCmdM map[string]subCmd, args []string) (subCmd, []string, bool) {
+	// if a proper sub-command is given then great, return that
+	if len(args) > 0 {
+		if subCmd, ok := subCmdM[args[0]]; ok {
+			return subCmd, args[1:], true
+		}
+	}
+
+	// if the empty subCmd is set in the map it means an absent sub-command is
+	// allowed, check if that's the case
+	if subCmd, ok := subCmdM[""]; ok {
+		return subCmd, args, true
+	}
+
+	return subCmd{}, args, false
+}
+
 func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 	m := map[string]Param{}
 	for _, p := range params {
@@ -168,7 +263,12 @@ func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 	return m, nil
 }
 
-func (cli *SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
+func (cli *SourceCLI) printHelp(
+	w io.Writer,
+	subCmdPrefix []string,
+	subCmdM map[string]subCmd,
+	pM map[string]Param,
+) {
 	type pEntry struct {
 		arg string
 		Param
@@ -200,24 +300,68 @@ func (cli *SourceCLI) printHelp(w io.Writer, pM map[string]Param) {
 		return fmt.Sprint(val.Interface())
 	}
 
-	for _, p := range pA {
-		fmt.Fprintf(w, "\n%s", p.arg)
-		if p.IsBool {
-			fmt.Fprintf(w, " (Flag)")
-		} else if p.Required {
-			fmt.Fprintf(w, " (Required)")
-		} else if defVal := fmtDefaultVal(p.Into); defVal != "" {
-			fmt.Fprintf(w, " (Default: %s)", defVal)
+	type subCmdEntry struct {
+		name string
+		subCmd
+	}
+
+	subCmdA := make([]subCmdEntry, 0, len(subCmdM))
+	for name, subCmd := range subCmdM {
+		if name == "" {
+			name = "<None>"
 		}
-		fmt.Fprintf(w, "\n")
-		if usage := p.Usage; usage != "" {
-			// make all usages end with a period, because I say so
-			usage = strings.TrimSpace(usage)
-			if !strings.HasSuffix(usage, ".") {
-				usage += "."
-			}
-			fmt.Fprintln(w, "\t"+usage)
+		subCmdA = append(subCmdA, subCmdEntry{name: name, subCmd: subCmd})
+	}
+
+	sort.Slice(subCmdA, func(i, j int) bool {
+		return subCmdA[i].name < subCmdA[j].name
+	})
+
+	fmt.Fprintf(w, "Usage: %s", os.Args[0])
+	if len(subCmdPrefix) > 0 {
+		fmt.Fprintf(w, " %s", strings.Join(subCmdPrefix, " "))
+	}
+	if len(subCmdA) > 0 {
+		if _, ok := subCmdM[""]; ok {
+			fmt.Fprint(w, " [sub-command]")
+		} else {
+			fmt.Fprint(w, " <sub-command>")
 		}
 	}
-	fmt.Fprintf(w, "\n")
+	if len(pA) > 0 {
+		fmt.Fprint(w, " [options]")
+	}
+	fmt.Fprint(w, "\n\n")
+
+	if len(subCmdA) > 0 {
+		fmt.Fprint(w, "Sub-commands:\n\n")
+		for _, subCmd := range subCmdA {
+			fmt.Fprintf(w, "\t%s\t%s\n", subCmd.name, subCmd.descr)
+		}
+		fmt.Fprint(w, "\n")
+	}
+
+	if len(pA) > 0 {
+		fmt.Fprint(w, "Options:\n\n")
+		for _, p := range pA {
+			fmt.Fprintf(w, "\t%s", p.arg)
+			if p.IsBool {
+				fmt.Fprintf(w, " (Flag)")
+			} else if p.Required {
+				fmt.Fprintf(w, " (Required)")
+			} else if defVal := fmtDefaultVal(p.Into); defVal != "" {
+				fmt.Fprintf(w, " (Default: %s)", defVal)
+			}
+			fmt.Fprint(w, "\n")
+			if usage := p.Usage; usage != "" {
+				// make all usages end with a period, because I say so
+				usage = strings.TrimSpace(usage)
+				if !strings.HasSuffix(usage, ".") {
+					usage += "."
+				}
+				fmt.Fprintln(w, "\t\t"+usage)
+			}
+			fmt.Fprint(w, "\n")
+		}
+	}
 }

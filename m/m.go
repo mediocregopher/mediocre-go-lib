@@ -67,7 +67,11 @@ func ServiceContext() context.Context {
 
 // Start performs the work of populating configuration parameters and triggering
 // the start event. It will return once the Start event has completed running.
-func Start(ctx context.Context) {
+//
+// This function returns a Context because there are cases where the Context
+// will be modified during Start, such as if WithSubCommand was used. If the
+// Context was not modified then the passed in Context will be returned.
+func Start(ctx context.Context) context.Context {
 	src, _ := ctx.Value(cfgSrcKey(0)).(mcfg.Source)
 	if src == nil {
 		mlog.Fatal("ctx not sourced from m package", ctx)
@@ -76,12 +80,14 @@ func Start(ctx context.Context) {
 	// no logging should happen before populate, primarily because log-level
 	// hasn't been populated yet, but also because it makes help output on cli
 	// look weird.
-	if err := mcfg.Populate(ctx, src); err != nil {
+	ctx, err := mcfg.Populate(ctx, src)
+	if err != nil {
 		mlog.Fatal("error populating configuration", ctx, merr.Context(err))
 	} else if err := mrun.Start(ctx); err != nil {
 		mlog.Fatal("error triggering start event", ctx, merr.Context(err))
 	}
 	mlog.Info("start hooks completed", ctx)
+	return ctx
 }
 
 // StartWaitStop performs the work of populating configuration parameters,
@@ -89,7 +95,7 @@ func Start(ctx context.Context) {
 // stop event.  Run will block until the stop event is done. If any errors are
 // encountered a fatal is thrown.
 func StartWaitStop(ctx context.Context) {
-	Start(ctx)
+	ctx = Start(ctx)
 
 	{
 		ch := make(chan os.Signal, 1)

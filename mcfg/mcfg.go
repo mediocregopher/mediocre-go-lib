@@ -18,6 +18,12 @@ import (
 // - JSON file
 // - YAML file
 
+// TODO WithCLISubCommand does not play nice with the expected use-case of
+// having CLI params overwrite Env ones. If Env is specified first in the
+// Sources slice then it won't know about any extra Params which might get added
+// due to a sub-command, but if it's specified second then Env values will
+// overwrite CLI ones.
+
 func sortParams(params []Param) {
 	sort.Slice(params, func(i, j int) bool {
 		a, b := params[i], params[j]
@@ -39,10 +45,10 @@ func sortParams(params []Param) {
 	})
 }
 
-// returns all Params gathered by recursively retrieving them from this Context
-// and its children. Returned Params are sorted according to their Path and
-// Name.
-func collectParams(ctx context.Context) []Param {
+// CollectParams returns all Params gathered by recursively retrieving them from
+// this Context and its children. Returned Params are sorted according to their
+// Path and Name.
+func CollectParams(ctx context.Context) []Param {
 	var params []Param
 
 	var visit func(context.Context)
@@ -85,13 +91,18 @@ func paramHash(path []string, name string) string {
 // Source may be nil to indicate that no configuration is provided. Only default
 // values will be used, and if any parameters are required this will error.
 func Populate(ctx context.Context, src Source) (context.Context, error) {
-	params := collectParams(ctx)
 	if src == nil {
 		src = ParamValues(nil)
 	}
 
-	// map Params to their hash, so we can match them to their ParamValues
+	ctx, pvs, err := src.Parse(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// map Params to their hash, so we can match them to their ParamValues.
 	// later. There should not be any duplicates here.
+	params := CollectParams(ctx)
 	pM := map[string]Param{}
 	for _, p := range params {
 		path := mctx.Path(p.Context)
@@ -100,11 +111,6 @@ func Populate(ctx context.Context, src Source) (context.Context, error) {
 			panic("duplicate Param: " + paramFullName(path, p.Name))
 		}
 		pM[hash] = p
-	}
-
-	ctx, pvs, err := src.Parse(ctx, params)
-	if err != nil {
-		return nil, err
 	}
 
 	// dedupe the ParamValues based on their hashes, with the last ParamValue
