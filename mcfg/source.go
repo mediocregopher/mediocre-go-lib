@@ -17,6 +17,11 @@ type ParamValue struct {
 // sorted set of possible Params to parse, and the Context from with the Params
 // were extracted.
 //
+// It's possible for Parsing to affect the Context itself, for example in the
+// case of sub-commands. For this reason Parse can return a Context, which will
+// get used for subsequent Parse commands inside, and then returned from,
+// Populate.
+//
 // Source should not return ParamValues which were not explicitly set to a value
 // by the configuration source.
 //
@@ -25,7 +30,7 @@ type ParamValue struct {
 // ParamValues which do not correspond to any of the passed in Params. These
 // will be ignored in Populate.
 type Source interface {
-	Parse(context.Context, []Param) ([]ParamValue, error)
+	Parse(context.Context, []Param) (context.Context, []ParamValue, error)
 }
 
 // ParamValues is simply a slice of ParamValue elements, which implements Parse
@@ -33,8 +38,8 @@ type Source interface {
 type ParamValues []ParamValue
 
 // Parse implements the method for the Source interface.
-func (pvs ParamValues) Parse(context.Context, []Param) ([]ParamValue, error) {
-	return pvs, nil
+func (pvs ParamValues) Parse(ctx context.Context, _ []Param) (context.Context, []ParamValue, error) {
+	return ctx, pvs, nil
 }
 
 // Sources combines together multiple Source instances into one. It will call
@@ -43,14 +48,15 @@ func (pvs ParamValues) Parse(context.Context, []Param) ([]ParamValue, error) {
 type Sources []Source
 
 // Parse implements the method for the Source interface.
-func (ss Sources) Parse(ctx context.Context, params []Param) ([]ParamValue, error) {
+func (ss Sources) Parse(ctx context.Context, params []Param) (context.Context, []ParamValue, error) {
 	var pvs []ParamValue
 	for _, s := range ss {
-		innerPVs, err := s.Parse(ctx, params)
-		if err != nil {
-			return nil, err
+		var innerPVs []ParamValue
+		var err error
+		if ctx, innerPVs, err = s.Parse(ctx, params); err != nil {
+			return nil, nil, err
 		}
 		pvs = append(pvs, innerPVs...)
 	}
-	return pvs, nil
+	return ctx, pvs, nil
 }

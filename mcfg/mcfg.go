@@ -77,9 +77,14 @@ func paramHash(path []string, name string) string {
 // multiple times with the same Context, each time will only affect the values
 // of the Params which were provided by the respective Source.
 //
+// Populating Params can affect the Context itself, for example in the case of
+// sub-commands. For this reason Populate will return a Context instance which
+// may have been affected by the Params (or, if not, will be the same one which
+// was passed in).
+//
 // Source may be nil to indicate that no configuration is provided. Only default
 // values will be used, and if any parameters are required this will error.
-func Populate(ctx context.Context, src Source) error {
+func Populate(ctx context.Context, src Source) (context.Context, error) {
 	params := collectParams(ctx)
 	if src == nil {
 		src = ParamValues(nil)
@@ -97,9 +102,9 @@ func Populate(ctx context.Context, src Source) error {
 		pM[hash] = p
 	}
 
-	pvs, err := src.Parse(ctx, params)
+	ctx, pvs, err := src.Parse(ctx, params)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// dedupe the ParamValues based on their hashes, with the last ParamValue
@@ -120,7 +125,7 @@ func Populate(ctx context.Context, src Source) error {
 		} else if _, ok := pvM[hash]; !ok {
 			ctx := mctx.Annotate(p.Context,
 				"param", paramFullName(mctx.Path(p.Context), p.Name))
-			return merr.New("required parameter is not set", ctx)
+			return nil, merr.New("required parameter is not set", ctx)
 		}
 	}
 
@@ -129,9 +134,9 @@ func Populate(ctx context.Context, src Source) error {
 		// at this point, all ParamValues in pvM have a corresponding pM Param
 		p := pM[hash]
 		if err := json.Unmarshal(pv.Value, p.Into); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return ctx, nil
 }

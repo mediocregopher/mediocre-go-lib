@@ -43,7 +43,7 @@ func (env *SourceEnv) expectedName(path []string, name string) string {
 }
 
 // Parse implements the method for the Source interface
-func (env *SourceEnv) Parse(ctx context.Context, params []Param) ([]ParamValue, error) {
+func (env *SourceEnv) Parse(ctx context.Context, params []Param) (context.Context, []ParamValue, error) {
 	kvs := env.Env
 	if kvs == nil {
 		kvs = os.Environ()
@@ -60,7 +60,7 @@ func (env *SourceEnv) Parse(ctx context.Context, params []Param) ([]ParamValue, 
 		split := strings.SplitN(kv, "=", 2)
 		if len(split) != 2 {
 			ctx := mctx.Annotate(context.Background(), "kv", kv)
-			return nil, merr.New("malformed environment key/value pair", ctx)
+			return nil, nil, merr.New("malformed environment key/value pair", ctx)
 		}
 		k, v := split[0], split[1]
 		if p, ok := pM[k]; ok {
@@ -72,5 +72,5 @@ func (env *SourceEnv) Parse(ctx context.Context, params []Param) ([]ParamValue, 
 		}
 	}
 
-	return pvs, nil
+	return ctx, pvs, nil
 }

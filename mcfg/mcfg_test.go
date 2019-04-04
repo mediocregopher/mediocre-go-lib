@@ -17,7 +17,7 @@ func TestPopulate(t *T) {
 		ctxChild, c := WithInt(ctxChild, "c", 0, "")
 		ctx = mctx.WithChild(ctx, ctxChild)
 
-		err := Populate(ctx, &SourceCLI{
+		_, err := Populate(ctx, &SourceCLI{
 			Args: []string{"--a=1", "--foo-b=2"},
 		})
 		assert.NoError(t, err)
@@ -34,12 +34,12 @@ func TestPopulate(t *T) {
 		ctxChild, c := WithRequiredInt(ctxChild, "c", "")
 		ctx = mctx.WithChild(ctx, ctxChild)
 
-		err := Populate(ctx, &SourceCLI{
+		_, err := Populate(ctx, &SourceCLI{
 			Args: []string{"--a=1", "--foo-b=2"},
 		})
 		assert.Error(t, err)
 
-		err = Populate(ctx, &SourceCLI{
+		_, err = Populate(ctx, &SourceCLI{
 			Args: []string{"--a=1", "--foo-b=2", "--foo-c=3"},
 		})
 		assert.NoError(t, err)

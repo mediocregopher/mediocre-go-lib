@@ -143,7 +143,7 @@ func TestWithCLITail(t *T) {
 
 	for _, tc := range cases {
 		ctx, tail := WithCLITail(ctx)
-		err := Populate(ctx, &SourceCLI{Args: tc.args})
+		_, err := Populate(ctx, &SourceCLI{Args: tc.args})
 		massert.Require(t, massert.Comment(massert.All(
 			massert.Nil(err),
 			massert.Equal(tc.expTail, *tail),
@@ -157,7 +157,7 @@ func ExampleWithCLITail() {
 	ctx, tail := WithCLITail(ctx)
 	ctx, bar := WithString(ctx, "bar", "defaultVal", "Description of bar.")
 
-	err := Populate(ctx, &SourceCLI{
+	_, err := Populate(ctx, &SourceCLI{
 		Args: []string{"--foo=100", "BADARG", "--bar", "BAR"},
 	})
 

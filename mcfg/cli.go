@@ -75,7 +75,7 @@ const (
 )
 
 // Parse implements the method for the Source interface
-func (cli *SourceCLI) Parse(ctx context.Context, params []Param) ([]ParamValue, error) {
+func (cli *SourceCLI) Parse(ctx context.Context, params []Param) (context.Context, []ParamValue, error) {
 	args := cli.Args
 	if cli.Args == nil {
 		args = os.Args[1:]
@@ -83,7 +83,7 @@ func (cli *SourceCLI) Parse(ctx context.Context, params []Param) ([]ParamValue, 
 
 	pM, err := cli.cliParams(params)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	pvs := make([]ParamValue, 0, len(args))
 	var (
@@ -119,10 +119,10 @@ func (cli *SourceCLI) Parse(ctx context.Context, params []Param) ([]ParamValue, 
 			}
 			if !pOk {
 				if ok := populateCLITail(ctx, args[i:]); ok {
-					return pvs, nil
+					return ctx, pvs, nil
 				}
 				ctx := mctx.Annotate(context.Background(), "param", arg)
-				return nil, merr.New("unexpected config parameter", ctx)
+				return nil, nil, merr.New("unexpected config parameter", ctx)
 			}
 		}
 
@@ -153,10 +153,10 @@ func (cli *SourceCLI) Parse(ctx context.Context, params []Param) ([]ParamValue, 
 	}
 	if pOk && !pvStrValOk {
 		ctx := mctx.Annotate(p.Context, "param", key)
-		return nil, merr.New("param expected a value", ctx)
+		return nil, nil, merr.New("param expected a value", ctx)
 	}
 
-	return pvs, nil
+	return ctx, pvs, nil
 }
 
 func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {

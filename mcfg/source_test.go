@@ -143,7 +143,7 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 // ParamValues
 func (scs srcCommonState) assert(s Source) error {
 	root := scs.mkRoot()
-	gotPVs, err := s.Parse(root, collectParams(root))
+	_, gotPVs, err := s.Parse(root, collectParams(root))
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func TestSources(t *T) {
 	ctx, b := WithRequiredInt(ctx, "b", "")
 	ctx, c := WithRequiredInt(ctx, "c", "")
 
-	err := Populate(ctx, Sources{
+	_, err := Populate(ctx, Sources{
 		&SourceCLI{Args: []string{"--a=1", "--b=666"}},
 		&SourceEnv{Env: []string{"B=2", "C=3"}},
 	})
@@ -179,7 +179,7 @@ func TestSourceParamValues(t *T) {
 	foo, c := WithBool(foo, "c", "")
 	ctx = mctx.WithChild(ctx, foo)
 
-	err := Populate(ctx, ParamValues{
+	_, err := Populate(ctx, ParamValues{
 		{Name: "a", Value: json.RawMessage(`4`)},
 		{Path: []string{"foo"}, Name: "b", Value: json.RawMessage(`"bbb"`)},
 		{Path: []string{"foo"}, Name: "c", Value: json.RawMessage("true")},
