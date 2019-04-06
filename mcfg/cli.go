@@ -59,9 +59,7 @@ type subCmd struct {
 // support for sub-sub-commands, and more. The callback may be nil.
 //
 // If any sub-commands have been defined on a Context which is passed into
-// Parse, it is assumed that a sub-command is required on the command-line. The
-// exception is if a sub-command with a name of "" has been defined; if so, it
-// will be used as the intended sub-command if none is specified.
+// Parse, it is assumed that a sub-command is required on the command-line.
 //
 // Sub-commands must be specified before any other options on the command-line.
 func WithCLISubCommand(ctx context.Context, name, descr string, callback func(context.Context) context.Context) (context.Context, *bool) {
@@ -156,9 +154,7 @@ func (cli *SourceCLI) parse(
 		if subCmd.callback != nil {
 			ctx = subCmd.callback(ctx)
 		}
-		if subCmd.name != "" {
-			subCmdPrefix = append(subCmdPrefix, subCmd.name)
-		}
+		subCmdPrefix = append(subCmdPrefix, subCmd.name)
 		*subCmd.flag = true
 		return cli.parse(ctx, subCmdPrefix, args)
 	}
@@ -238,20 +234,16 @@ func (cli *SourceCLI) parse(
 }
 
 func (cli *SourceCLI) getSubCmd(subCmdM map[string]subCmd, args []string) (subCmd, []string, bool) {
-	// if a proper sub-command is given then great, return that
-	if len(args) > 0 {
-		if subCmd, ok := subCmdM[args[0]]; ok {
-			return subCmd, args[1:], true
-		}
+	if len(args) == 0 {
+		return subCmd{}, args, false
 	}
 
-	// if the empty subCmd is set in the map it means an absent sub-command is
-	// allowed, check if that's the case
-	if subCmd, ok := subCmdM[""]; ok {
-		return subCmd, args, true
+	s, ok := subCmdM[args[0]]
+	if !ok {
+		return subCmd{}, args, false
 	}
 
-	return subCmd{}, args, false
+	return s, args[1:], true
 }
 
 func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {
@@ -307,9 +299,6 @@ func (cli *SourceCLI) printHelp(
 
 	subCmdA := make([]subCmdEntry, 0, len(subCmdM))
 	for name, subCmd := range subCmdM {
-		if name == "" {
-			name = "<None>"
-		}
 		subCmdA = append(subCmdA, subCmdEntry{name: name, subCmd: subCmd})
 	}
 
@@ -322,11 +311,7 @@ func (cli *SourceCLI) printHelp(
 		fmt.Fprintf(w, " %s", strings.Join(subCmdPrefix, " "))
 	}
 	if len(subCmdA) > 0 {
-		if _, ok := subCmdM[""]; ok {
-			fmt.Fprint(w, " [sub-command]")
-		} else {
-			fmt.Fprint(w, " <sub-command>")
-		}
+		fmt.Fprint(w, " <sub-command>")
 	}
 	if len(pA) > 0 {
 		fmt.Fprint(w, " [options]")

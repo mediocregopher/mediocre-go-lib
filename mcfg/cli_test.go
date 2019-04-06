@@ -107,32 +107,6 @@ Options:
 		Test int param.
 
 $`)
-
-	ctx, _ = WithCLISubCommand(ctx, "", "No sub-command", nil)
-	assertHelp(ctx, []string{"foo", "bar"}, `^Usage: \S+ foo bar \[sub-command\] \[options\]
-
-Sub-commands:
-
-	<None>	No sub-command
-	first	First sub-command
-	second	Second sub-command
-
-Options:
-
-	--baz2 \(Required\)
-
-	--baz3 \(Required\)
-
-	--bar \(Flag\)
-		Test bool param.
-
-	--baz \(Default: "baz"\)
-		Test string param.
-
-	--foo \(Default: 5\)
-		Test int param.
-
-$`)
 }
 
 func TestSourceCLI(t *T) {
@@ -255,15 +229,15 @@ func ExampleWithCLITail() {
 
 func TestWithCLISubCommand(t *T) {
 	var (
-		ctx         context.Context
-		foo         *int
-		bar         *int
-		baz         *int
-		aFlag       *bool
-		defaultFlag *bool
+		ctx   context.Context
+		foo   *int
+		bar   *int
+		baz   *int
+		aFlag *bool
+		bFlag *bool
 	)
 	reset := func() {
-		foo, bar, baz, aFlag, defaultFlag = nil, nil, nil, nil, nil
+		foo, bar, baz, aFlag, bFlag = nil, nil, nil, nil, nil
 		ctx = context.Background()
 		ctx, foo = WithInt(ctx, "foo", 0, "Description of foo.")
 		ctx, aFlag = WithCLISubCommand(ctx, "a", "Description of a.",
@@ -271,7 +245,7 @@ func TestWithCLISubCommand(t *T) {
 				ctx, bar = WithInt(ctx, "bar", 0, "Description of bar.")
 				return ctx
 			})
-		ctx, defaultFlag = WithCLISubCommand(ctx, "", "Description of default.",
+		ctx, bFlag = WithCLISubCommand(ctx, "b", "Description of b.",
 			func(ctx context.Context) context.Context {
 				ctx, baz = WithInt(ctx, "baz", 0, "Description of baz.")
 				return ctx
@@ -288,12 +262,12 @@ func TestWithCLISubCommand(t *T) {
 		massert.Equal(2, *bar),
 		massert.Nil(baz),
 		massert.Equal(true, *aFlag),
-		massert.Equal(false, *defaultFlag),
+		massert.Equal(false, *bFlag),
 	)
 
 	reset()
 	_, err = Populate(ctx, &SourceCLI{
-		Args: []string{"--foo=1", "--baz=3"},
+		Args: []string{"b", "--foo=1", "--baz=3"},
 	})
 	massert.Require(t,
 		massert.Comment(massert.Nil(err), "%v", err),
@@ -301,7 +275,7 @@ func TestWithCLISubCommand(t *T) {
 		massert.Nil(bar),
 		massert.Equal(3, *baz),
 		massert.Equal(false, *aFlag),
-		massert.Equal(true, *defaultFlag),
+		massert.Equal(true, *bFlag),
 	)
 }
 
@@ -317,7 +291,7 @@ func ExampleWithCLISubCommand() {
 		})
 
 	var baz *int
-	ctx, defaultFlag := WithCLISubCommand(ctx, "", "Description of default.",
+	ctx, bFlag := WithCLISubCommand(ctx, "b", "Description of b.",
 		func(ctx context.Context) context.Context {
 			ctx, baz = WithInt(ctx, "baz", 0, "Description of baz.")
 			return ctx
@@ -327,16 +301,16 @@ func ExampleWithCLISubCommand() {
 	if _, err := Populate(ctx, &SourceCLI{Args: args}); err != nil {
 		panic(err)
 	}
-	fmt.Printf("foo:%d bar:%d aFlag:%v defaultFlag:%v\n", *foo, *bar, *aFlag, *defaultFlag)
+	fmt.Printf("foo:%d bar:%d aFlag:%v bFlag:%v\n", *foo, *bar, *aFlag, *bFlag)
 
 	// reset output for another Populate
 	*aFlag = false
-	args = []string{"--foo=1", "--baz=3"}
+	args = []string{"b", "--foo=1", "--baz=3"}
 	if _, err := Populate(ctx, &SourceCLI{Args: args}); err != nil {
 		panic(err)
 	}
-	fmt.Printf("foo:%d baz:%d aFlag:%v defaultFlag:%v\n", *foo, *baz, *aFlag, *defaultFlag)
+	fmt.Printf("foo:%d baz:%d aFlag:%v bFlag:%v\n", *foo, *baz, *aFlag, *bFlag)
 
-	// Output: foo:1 bar:2 aFlag:true defaultFlag:false
-	// foo:1 baz:3 aFlag:false defaultFlag:true
+	// Output: foo:1 bar:2 aFlag:true bFlag:false
+	// foo:1 baz:3 aFlag:false bFlag:true
 }
