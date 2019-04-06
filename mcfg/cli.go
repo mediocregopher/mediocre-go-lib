@@ -16,9 +16,14 @@ import (
 type cliKey int
 
 const (
-	cliKeyTailPtr cliKey = iota
+	cliKeyTail cliKey = iota
 	cliKeySubCmdM
 )
+
+type cliTail struct {
+	dst   *[]string
+	descr string
+}
 
 // WithCLITail returns a Context which modifies the behavior of SourceCLI's
 // Parse, if SourceCLI is used with that Context at all. Normally when SourceCLI
@@ -27,19 +32,31 @@ const (
 // and all subsequent Args (i.e. the tail) should be set to the returned
 // []string value.
 //
-// If multiple WithCLITail calls are used then only the latest returned pointer
-// will be filled.
-func WithCLITail(ctx context.Context) (context.Context, *[]string) {
+// The descr (optional) will be appended to the "Usage" line which is printed
+// with the help document when "-h" is passed in.
+func WithCLITail(ctx context.Context, descr string) (context.Context, *[]string) {
+	if ctx.Value(cliKeyTail) != nil {
+		panic("WithCLITail already called in this Context")
+	}
 	tailPtr := new([]string)
-	return context.WithValue(ctx, cliKeyTailPtr, tailPtr), tailPtr
+	ctx = context.WithValue(ctx, cliKeyTail, cliTail{
+		dst:   tailPtr,
+		descr: descr,
+	})
+	return ctx, tailPtr
 }
 
 func populateCLITail(ctx context.Context, tail []string) bool {
-	tailPtr, ok := ctx.Value(cliKeyTailPtr).(*[]string)
+	ct, ok := ctx.Value(cliKeyTail).(cliTail)
 	if ok {
-		*tailPtr = tail
+		*ct.dst = tail
 	}
 	return ok
+}
+
+func getCLITailDescr(ctx context.Context) string {
+	ct, _ := ctx.Value(cliKeyTail).(cliTail)
+	return ct.descr
 }
 
 type subCmd struct {
@@ -133,10 +150,9 @@ func (cli *SourceCLI) parse(
 	if err != nil {
 		return nil, nil, err
 	}
-	subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
 
 	printHelpAndExit := func() {
-		cli.printHelp(os.Stderr, subCmdPrefix, subCmdM, pM)
+		cli.printHelp(ctx, os.Stderr, subCmdPrefix, pM)
 		os.Stderr.Sync()
 		os.Exit(1)
 	}
@@ -145,6 +161,7 @@ func (cli *SourceCLI) parse(
 	// of them should have been given, in which case send the Context through
 	// the callback to obtain a new one (which presumably has further config
 	// options the previous didn't) and call parse again.
+	subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
 	if len(subCmdM) > 0 {
 		subCmd, args, ok := cli.getSubCmd(subCmdM, args)
 		if !ok {
@@ -256,9 +273,9 @@ func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 }
 
 func (cli *SourceCLI) printHelp(
+	ctx context.Context,
 	w io.Writer,
 	subCmdPrefix []string,
-	subCmdM map[string]subCmd,
 	pM map[string]Param,
 ) {
 	type pEntry struct {
@@ -297,6 +314,7 @@ func (cli *SourceCLI) printHelp(
 		subCmd
 	}
 
+	subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
 	subCmdA := make([]subCmdEntry, 0, len(subCmdM))
 	for name, subCmd := range subCmdM {
 		subCmdA = append(subCmdA, subCmdEntry{name: name, subCmd: subCmd})
@@ -315,6 +333,9 @@ func (cli *SourceCLI) printHelp(
 	}
 	if len(pA) > 0 {
 		fmt.Fprint(w, " [options]")
+	}
+	if descr := getCLITailDescr(ctx); descr != "" {
+		fmt.Fprintf(w, " %s", descr)
 	}
 	fmt.Fprint(w, "\n\n")
 

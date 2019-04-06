@@ -22,8 +22,7 @@ func TestSourceCLIHelp(t *T) {
 		src := &SourceCLI{}
 		pM, err := src.cliParams(CollectParams(ctx))
 		require.NoError(t, err)
-		subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
-		src.printHelp(buf, subCmdPrefix, subCmdM, pM)
+		src.printHelp(ctx, buf, subCmdPrefix, pM)
 
 		out := buf.String()
 		ok := regexp.MustCompile(exp).MatchString(out)
@@ -85,6 +84,31 @@ $`)
 	ctx, _ = WithCLISubCommand(ctx, "first", "First sub-command", nil)
 	ctx, _ = WithCLISubCommand(ctx, "second", "Second sub-command", nil)
 	assertHelp(ctx, []string{"foo", "bar"}, `^Usage: \S+ foo bar <sub-command> \[options\]
+
+Sub-commands:
+
+	first	First sub-command
+	second	Second sub-command
+
+Options:
+
+	--baz2 \(Required\)
+
+	--baz3 \(Required\)
+
+	--bar \(Flag\)
+		Test bool param.
+
+	--baz \(Default: "baz"\)
+		Test string param.
+
+	--foo \(Default: 5\)
+		Test int param.
+
+$`)
+
+	ctx, _ = WithCLITail(ctx, "[arg...]")
+	assertHelp(ctx, nil, `^Usage: \S+ <sub-command> \[options\] \[arg\.\.\.\]
 
 Sub-commands:
 
@@ -204,7 +228,7 @@ func TestWithCLITail(t *T) {
 	}
 
 	for _, tc := range cases {
-		ctx, tail := WithCLITail(ctx)
+		ctx, tail := WithCLITail(ctx, "foo")
 		_, err := Populate(ctx, &SourceCLI{Args: tc.args})
 		massert.Require(t, massert.Comment(massert.All(
 			massert.Nil(err),
@@ -216,15 +240,15 @@ func TestWithCLITail(t *T) {
 func ExampleWithCLITail() {
 	ctx := context.Background()
 	ctx, foo := WithInt(ctx, "foo", 1, "Description of foo.")
-	ctx, tail := WithCLITail(ctx)
+	ctx, tail := WithCLITail(ctx, "[arg...]")
 	ctx, bar := WithString(ctx, "bar", "defaultVal", "Description of bar.")
 
 	_, err := Populate(ctx, &SourceCLI{
-		Args: []string{"--foo=100", "BADARG", "--bar", "BAR"},
+		Args: []string{"--foo=100", "arg1", "arg2", "arg3"},
 	})
 
 	fmt.Printf("err:%v foo:%v bar:%v tail:%#v\n", err, *foo, *bar, *tail)
-	// Output: err:<nil> foo:100 bar:defaultVal tail:[]string{"BADARG", "--bar", "BAR"}
+	// Output: err:<nil> foo:100 bar:defaultVal tail:[]string{"arg1", "arg2", "arg3"}
 }
 
 func TestWithCLISubCommand(t *T) {
