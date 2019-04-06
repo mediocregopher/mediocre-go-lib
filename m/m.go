@@ -16,7 +16,22 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-type cfgSrcKey int
+type ctxKey int
+
+const (
+	ctxKeyCfgSrc ctxKey = iota
+	ctxKeyInfoLog
+)
+
+func debugLog(msg string, ctxs ...context.Context) {
+	fn := mlog.Debug
+	if len(ctxs) > 0 {
+		if ok, _ := ctxs[0].Value(ctxKeyInfoLog).(bool); ok {
+			fn = mlog.Info
+		}
+	}
+	fn(msg, ctxs...)
+}
 
 // ProcessContext returns a Context which should be used as the root Context
 // when implementing most processes.
@@ -28,7 +43,7 @@ func ProcessContext() context.Context {
 	ctx := context.Background()
 
 	// embed confuration source which should be used into the context.
-	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(new(mcfg.SourceCLI)))
+	ctx = context.WithValue(ctx, ctxKeyCfgSrc, mcfg.Source(new(mcfg.SourceCLI)))
 
 	// set up log level handling
 	logger := mlog.NewLogger()
@@ -56,10 +71,14 @@ func ServiceContext() context.Context {
 	ctx := ProcessContext()
 
 	// services expect to use many different configuration sources
-	ctx = context.WithValue(ctx, cfgSrcKey(0), mcfg.Source(mcfg.Sources{
+	ctx = context.WithValue(ctx, ctxKeyCfgSrc, mcfg.Source(mcfg.Sources{
 		new(mcfg.SourceEnv),
 		new(mcfg.SourceCLI),
 	}))
+
+	// it's useful to show debug entries (from this package specifically) as
+	// info logs for long-running services.
+	ctx = context.WithValue(ctx, ctxKeyInfoLog, true)
 
 	// TODO set up the debug endpoint.
 	return ctx
@@ -72,7 +91,7 @@ func ServiceContext() context.Context {
 // will be modified during Start, such as if WithSubCommand was used. If the
 // Context was not modified then the passed in Context will be returned.
 func Start(ctx context.Context) context.Context {
-	src, _ := ctx.Value(cfgSrcKey(0)).(mcfg.Source)
+	src, _ := ctx.Value(ctxKeyCfgSrc).(mcfg.Source)
 	if src == nil {
 		mlog.Fatal("ctx not sourced from m package", ctx)
 	}
@@ -86,7 +105,7 @@ func Start(ctx context.Context) context.Context {
 	} else if err := mrun.Start(ctx); err != nil {
 		mlog.Fatal("error triggering start event", ctx, merr.Context(err))
 	}
-	mlog.Info("start hooks completed", ctx)
+	debugLog("start hooks completed", ctx)
 	return ctx
 }
 
@@ -101,11 +120,11 @@ func StartWaitStop(ctx context.Context) {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt)
 		s := <-ch
-		mlog.Info("signal received, stopping", mctx.Annotate(ctx, "signal", s))
+		debugLog("signal received, stopping", mctx.Annotate(ctx, "signal", s))
 	}
 
 	if err := mrun.Stop(ctx); err != nil {
 		mlog.Fatal("error triggering stop event", ctx, merr.Context(err))
 	}
-	mlog.Info("exiting process", ctx)
+	debugLog("exiting process", ctx)
 }
