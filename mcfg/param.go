@@ -133,6 +133,23 @@ func WithRequiredInt(ctx context.Context, name string, usage string) (context.Co
 	return ctx, &i
 }
 
+// WithFloat64 returns a *float64 which will be populated once Populate is run on
+// the returned Context.
+func WithFloat64(ctx context.Context, name string, defaultVal float64, usage string) (context.Context, *float64) {
+	f := defaultVal
+	ctx = WithParam(ctx, Param{Name: name, Usage: usage, Into: &f})
+	return ctx, &f
+}
+
+// WithRequiredFloat64 returns a *float64 which will be populated once Populate
+// is run on the returned Context, and which must be supplied by a configuration
+// Source.
+func WithRequiredFloat64(ctx context.Context, name string, defaultVal float64, usage string) (context.Context, *float64) {
+	f := defaultVal
+	ctx = WithParam(ctx, Param{Name: name, Required: true, Usage: usage, Into: &f})
+	return ctx, &f
+}
+
 // WithString returns a *string which will be populated once Populate is run on
 // the returned Context.
 func WithString(ctx context.Context, name, defaultVal, usage string) (context.Context, *string) {
