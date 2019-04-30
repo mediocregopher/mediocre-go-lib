@@ -94,10 +94,11 @@ func Populate(ctx context.Context, src Source) (context.Context, error) {
 	if src == nil {
 		src = ParamValues(nil)
 	}
+	ogCtx := ctx
 
 	ctx, pvs, err := src.Parse(ctx)
 	if err != nil {
-		return nil, err
+		return ogCtx, err
 	}
 
 	// map Params to their hash, so we can match them to their ParamValues.
@@ -131,7 +132,7 @@ func Populate(ctx context.Context, src Source) (context.Context, error) {
 		} else if _, ok := pvM[hash]; !ok {
 			ctx := mctx.Annotate(p.Context,
 				"param", paramFullName(mctx.Path(p.Context), p.Name))
-			return nil, merr.New("required parameter is not set", ctx)
+			return ogCtx, merr.New("required parameter is not set", ctx)
 		}
 	}
 
@@ -140,7 +141,7 @@ func Populate(ctx context.Context, src Source) (context.Context, error) {
 		// at this point, all ParamValues in pvM have a corresponding pM Param
 		p := pM[hash]
 		if err := json.Unmarshal(pv.Value, p.Into); err != nil {
-			return nil, err
+			return ogCtx, err
 		}
 	}
 
