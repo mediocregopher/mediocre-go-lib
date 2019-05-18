@@ -1,5 +1,31 @@
-// Package mrun extends mctx to include runtime event hooks and tracking of the
-// liveness of spawned go-routines.
+// Package mrun provides the ability to register callback hooks on contexts, as
+// well as some convenience functions which allow using a context as a
+// wait-group.
+//
+// Hooks
+//
+// Hooks are registered onto contexts and later called in bulk. mrun will take
+// into account the order Hooks are registered, including Hooks within a
+// context's children (see mctx package), and execute them in the same order
+// they were registered. For example:
+//
+//	newHook := func(i int) mrun.Hook {
+//		return func(context.Context) error {
+//			fmt.Println(i)
+//			return nil
+//		}
+//	}
+//
+//	ctx := context.Background()
+//	ctx = mrun.WithStartHook(ctx, newHook(0))
+//
+//	child := mctx.NewChild(ctx, "child")
+//	child = mrun.WithStartHook(child, newHook(1))
+//	ctx = mctx.WithChild(ctx, child)
+//
+//	ctx = mrun.WithStartHook(ctx, newHook(2))
+//	mrun.Start(ctx) // prints "0", "1", then "2"
+//
 package mrun
 
 import (
@@ -36,9 +62,9 @@ func (fe *futureErr) set(err error) {
 
 type threadCtxKey int
 
-// WithThreads spawns n go-routines, each of which executes the given function. The
-// returned Context tracks these go-routines, and can then be passed into the
-// Wait function to block until the spawned go-routines all return.
+// WithThreads spawns n go-routines, each of which executes the given function.
+// The returned Context tracks these go-routines, and can then be passed into
+// the Wait function to block until the spawned go-routines all return.
 func WithThreads(ctx context.Context, n uint, fn func() error) context.Context {
 	// I dunno why this would happen, but it wouldn't actually hurt anything
 	if n == 0 {
@@ -68,7 +94,7 @@ var ErrDone = errors.New("Wait is done waiting")
 // Wait blocks until all go-routines spawned using WithThreads on the passed in
 // Context (and its predecessors) have returned. Any number of the go-routines
 // may have returned already when Wait is called, and not all go-routines need
-// be from the same WithThreads call.
+// to be from the same WithThreads call.
 //
 // If any of the thread functions returned an error during its runtime Wait will
 // return that error. If multiple returned an error only one of those will be

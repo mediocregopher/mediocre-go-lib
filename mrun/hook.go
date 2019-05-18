@@ -105,23 +105,7 @@ func triggerHooks(ctx context.Context, userKey interface{}, next func([]hookEl) 
 //
 // If the Context has children (see the mctx package), and those children have
 // Hooks registered under this key, then their Hooks will be called in the
-// expected order. For example:
-//
-//	// parent context has hookA registered
-//	ctx := context.Background()
-//	ctx = WithHook(ctx, 0, hookA)
-//
-//	// child context has hookB registered
-//	childCtx := mctx.NewChild(ctx, "child")
-//	childCtx = WithHook(childCtx, 0, hookB)
-//	ctx = mctx.WithChild(ctx, childCtx) // needed to link childCtx to ctx
-//
-//	// parent context has another Hook, hookC, registered
-//	ctx = WithHook(ctx, 0, hookC)
-//
-//	// The Hooks will be triggered in the order: hookA, hookB, then hookC
-//	err := TriggerHooks(ctx, 0)
-//
+// expected order. See package docs for an example.
 func TriggerHooks(ctx context.Context, key interface{}) error {
 	return triggerHooks(ctx, key, func(hookEls []hookEl) (hookEl, []hookEl) {
 		return hookEls[0], hookEls[1:]
