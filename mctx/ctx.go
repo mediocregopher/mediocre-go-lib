@@ -1,12 +1,62 @@
 // Package mctx extends the builtin context package to organize Contexts into a
-// hierarchy. Each node in the hierarchy is given a name and is aware of all of
-// its ancestors.
-//
-// This package also provides extra functionality which allows contexts
-// to be more useful when used in the hierarchy.
+// hierarchy.
 //
 // All functions and methods in this package are thread-safe unless otherwise
 // noted.
+//
+// Parents and children
+//
+// Each node in the hierarchy is given a name and is aware of all of its
+// ancestors. The sequence of ancestor's names, ending in the node's name, is
+// called its "path". For example:
+//
+//	ctx := context.Background()
+//	ctxA := mctx.NewChild(ctx, "A")
+//	ctxB := mctx.NewChild(ctx, "B")
+//	fmt.Printf("ctx:%#v\n", mctx.Path(ctx)) // prints "ctx:[]string(nil)"
+//	fmt.Printf("ctxA:%#v\n", mctx.Path(ctxA)) // prints "ctxA:[]string{"A"}
+//	fmt.Printf("ctxB:%#v\n", mctx.Path(ctxB)) // prints "ctxA:[]string{"A", "B"}
+//
+// WithChild can be used to incorporate a child into its parent, making the
+// parent's children iterable on it:
+//
+//	ctx := context.Background()
+//	ctxA1 := mctx.NewChild(ctx, "A1")
+//	ctxA2 := mctx.NewChild(ctx, "A2")
+//	ctx = mctx.WithChild(ctx, ctxA1)
+//	ctx = mctx.WithChild(ctx, ctxA2)
+//	for _, childCtx := range mctx.Children(ctx) {
+//		fmt.Printf("%q\n", mctx.Name(childCtx)) // prints "A1" then "A2"
+//	}
+//
+// Key/Value
+//
+// The context's key/value namespace is split into two: a space local to a node,
+// not inherited from its parent or inheritable by its children
+// (WithLocalValue), and the original one which comes with the builtin context
+// package (context.WithValue):
+//
+//	ctx := context.Background()
+//	ctx = context.WithValue(ctx, "inheritableKey", "foo")
+//	ctx = mctx.WithLocalValue(ctx, "localKey", "bar")
+//	childCtx := mctx.NewChild(ctx, "child")
+//
+//	// ctx.Value("inheritableKey") == "foo"
+//	// child.Value("inheritableKey") == "foo"
+//	// mctx.LocalValue(ctx, "localKey") == "bar"
+//	// mctx.LocalValue(child, "localKey") == nil
+//
+// Annotations
+//
+// Annotations are a special case of local key/values, where the data being
+// stored is specifically runtime metadata which would be useful for logging,
+// error output, etc... Annotation data might include an IP address of a
+// connected client, a userID the client has authenticated as, the primary key
+// of a row in a database being queried, etc...
+//
+// Annotations are always tied to the path of the node they were set on, so that
+// even when the annotations of two contexts are merged the annotation data will
+// not overlap unless the contexts have the same path.
 package mctx
 
 import (
@@ -41,9 +91,9 @@ func Child(parent context.Context, name string) context.Context {
 	return parent.Value(ancestryKeyChildren).([]context.Context)[i]
 }
 
-// Children returns all children of this Context which have been kept by
-// WithChild, mapped by their name. If this Context wasn't produced by WithChild
-// then this returns nil.
+// Children returns all children of this Context which have been added by
+// WithChild, in the order they were added. If this Context wasn't produced by
+// WithChild then this returns nil.
 func Children(parent context.Context) []context.Context {
 	children, _ := parent.Value(ancestryKeyChildren).([]context.Context)
 	return children
@@ -101,8 +151,8 @@ func pathHash(path []string) string {
 	return hex.EncodeToString(pathHash.Sum(nil))
 }
 
-// Name returns the name this Context was generated with via NewChild, or false
-// if this Context was not generated via NewChild.
+// Name returns the name this Context was created with via NewChild, or false if
+// this Context was not created via NewChild.
 func Name(ctx context.Context) (string, bool) {
 	path := Path(ctx)
 	if len(path) == 0 {
@@ -111,10 +161,10 @@ func Name(ctx context.Context) (string, bool) {
 	return path[len(path)-1], true
 }
 
-// NewChild creates a new Context based off of the parent one, and returns a new
-// instance of the passed in parent and the new child. The child will have a
-// path which is the parent's path with the given name appended. The parent will
-// have the new child as part of its set of children (see Children function).
+// NewChild creates and returns a new Context based off of the parent one.  The
+// child will have a path which is the parent's path appended with the given
+// name. In order for the parent to "see" the child (via the Child or Children
+// functions) the WithChild function must be used.
 //
 // If the parent already has a child of the given name this function panics.
 func NewChild(parent context.Context, name string) context.Context {
@@ -147,7 +197,7 @@ func isChild(parent, child context.Context) bool {
 }
 
 // WithChild returns a modified parent which holds a reference to child in its
-// Children set. If the child's name is already taken in the parent then this
+// Children list. If the child's name is already taken in the parent then this
 // function panics.
 func WithChild(parent, child context.Context) context.Context {
 	if !isChild(parent, child) {
@@ -168,8 +218,8 @@ func WithChild(parent, child context.Context) context.Context {
 }
 
 // BreadthFirstVisit visits this Context and all of its children, and their
-// children, in a breadth-first order. If the callback returns false then the
-// function returns without visiting any more Contexts.
+// children, etc... in a breadth-first order. If the callback returns false then
+// the function returns without visiting any more Contexts.
 func BreadthFirstVisit(ctx context.Context, callback func(context.Context) bool) {
 	queue := []context.Context{ctx}
 	for len(queue) > 0 {
@@ -193,9 +243,9 @@ type localVal struct {
 	key, val interface{}
 }
 
-// WithLocalValue is like WithValue, but the stored value will not be present
-// on any children created via WithChild. Local values must be retrieved with
-// the LocalValue function in this package. Local values share a different
+// WithLocalValue is like context.WithValue, but the stored value will not be
+// present on any children created via NewChild. Local values must be retrieved
+// with the LocalValue function in this package. Local values share a different
 // namespace than the normal WithValue/Value values (i.e. they do not overlap).
 func WithLocalValue(ctx context.Context, key, val interface{}) context.Context {
 	prev, _ := ctx.Value(localValsKey(0)).(*localVal)

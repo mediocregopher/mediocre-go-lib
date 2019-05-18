@@ -63,14 +63,19 @@ func Annotate(ctx context.Context, kvs ...interface{}) context.Context {
 	return ctx
 }
 
+// Annotated is a shortcut for calling Annotate with a context.Background().
+func Annotated(kvs ...interface{}) context.Context {
+	return Annotate(context.Background(), kvs...)
+}
+
 // AnnotationSet describes a set of unique Annotation values which were
 // retrieved off a Context via the Annotations function. An AnnotationSet has a
 // couple methods on it to aid in post-processing.
 type AnnotationSet []Annotation
 
 // Annotations returns all Annotation values which have been set via Annotate on
-// this Context. If a key was set twice then only the most recent value is
-// included.
+// this Context and its ancestors. If a key was set twice then only the most
+// recent value is included.
 func Annotations(ctx context.Context) AnnotationSet {
 	a, _ := ctx.Value(annotationKey(0)).(*annotation)
 	if a == nil {
@@ -160,7 +165,7 @@ func (aa AnnotationSet) StringMapByPath() map[string]map[string]string {
 	return outM
 }
 
-// StringMap formats each of the Annotations into strings using fmt.Sprint.  If
+// StringMap formats each of the Annotations into strings using fmt.Sprint. If
 // any two keys format to the same string, then path information will be
 // prefaced to each one. If they still format to the same string, then type
 // information will be prefaced to each one.
@@ -272,9 +277,10 @@ func mergeAnnotations(ctxA, ctxB context.Context) context.Context {
 
 // MergeAnnotations sequentially merges the annotation data of the passed in
 // Contexts into the first passed in one. Data from a Context overwrites
-// overlapping data on all passed in Contexts to the left of it. All other
-// aspects of the first Context remain the same, and that Context is returned
-// with the new set of Annotation data.
+// overlapping data on all passed in Contexts to the left of it (keeping in mind
+// that two Annotations must share the same Key _and_ Path to overlap). All
+// other aspects of the first Context remain the same, and that Context is
+// returned with the new set of Annotation data.
 //
 // NOTE this will panic if no Contexts are passed in.
 func MergeAnnotations(ctxs ...context.Context) context.Context {
