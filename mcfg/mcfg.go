@@ -1,5 +1,12 @@
-// Package mcfg provides a simple foundation for complex service/binary
-// configuration, initialization, and destruction
+// Package mcfg implements the creation of different types of configuration
+// parameters and various methods of filling those parameters from external
+// configuration sources (e.g. the command line and environment variables).
+//
+// Parameters are registered onto a context, and that same context is used later
+// to collect and fulfill those parameters. When used with the mctx package's
+// child/parent context functionality, the path of a context is incorporated
+// into the parameter's full name in order to namespace parameters which exist
+// in different contexts.
 package mcfg
 
 import (
@@ -45,9 +52,9 @@ func sortParams(params []Param) {
 	})
 }
 
-// CollectParams returns all Params gathered by recursively retrieving them from
-// this Context and its children. Returned Params are sorted according to their
-// Path and Name.
+// CollectParams gathers all Params by recursively retrieving them from this
+// Context and its children. Returned Params are sorted according to their Path
+// and Name.
 func CollectParams(ctx context.Context) []Param {
 	var params []Param
 

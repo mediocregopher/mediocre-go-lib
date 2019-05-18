@@ -304,9 +304,12 @@ func TestWithCLISubCommand(t *T) {
 }
 
 func ExampleWithCLISubCommand() {
+	// Create a new Context with a parameter "foo", which can be used across all
+	// sub-commands.
 	ctx := context.Background()
 	ctx, foo := WithInt(ctx, "foo", 0, "Description of foo.")
 
+	// Create a sub-command "a", which has a parameter "bar" specific to it.
 	var bar *int
 	ctx, aFlag := WithCLISubCommand(ctx, "a", "Description of a.",
 		func(ctx context.Context) context.Context {
@@ -314,6 +317,7 @@ func ExampleWithCLISubCommand() {
 			return ctx
 		})
 
+	// Create a sub-command "b", which has a parameter "baz" specific to it.
 	var baz *int
 	ctx, bFlag := WithCLISubCommand(ctx, "b", "Description of b.",
 		func(ctx context.Context) context.Context {
@@ -321,13 +325,15 @@ func ExampleWithCLISubCommand() {
 			return ctx
 		})
 
+	// Use Populate with manually generated CLI arguments, calling the "a"
+	// sub-command.
 	args := []string{"a", "--foo=1", "--bar=2"}
 	if _, err := Populate(ctx, &SourceCLI{Args: args}); err != nil {
 		panic(err)
 	}
 	fmt.Printf("foo:%d bar:%d aFlag:%v bFlag:%v\n", *foo, *bar, *aFlag, *bFlag)
 
-	// reset output for another Populate
+	// reset output for another Populate, this time calling the "b" sub-command.
 	*aFlag = false
 	args = []string{"b", "--foo=1", "--baz=3"}
 	if _, err := Populate(ctx, &SourceCLI{Args: args}); err != nil {

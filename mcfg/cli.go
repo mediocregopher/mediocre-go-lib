@@ -26,11 +26,10 @@ type cliTail struct {
 }
 
 // WithCLITail returns a Context which modifies the behavior of SourceCLI's
-// Parse, if SourceCLI is used with that Context at all. Normally when SourceCLI
-// encounters an unexpected Arg it will immediately return an error. This
-// function modifies the Context to indicate to Parse that the unexpected Arg,
-// and all subsequent Args (i.e. the tail) should be set to the returned
-// []string value.
+// Parse. Normally when SourceCLI encounters an unexpected Arg it will
+// immediately return an error. This function modifies the Context to indicate
+// to Parse that the unexpected Arg, and all subsequent Args (i.e. the tail),
+// should be set to the returned []string value.
 //
 // The descr (optional) will be appended to the "Usage" line which is printed
 // with the help document when "-h" is passed in.
