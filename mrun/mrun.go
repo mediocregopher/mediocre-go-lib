@@ -30,8 +30,6 @@ package mrun
 import (
 	"context"
 	"errors"
-
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
 )
 
 type futureErr struct {
@@ -105,14 +103,6 @@ var ErrDone = errors.New("Wait is done waiting")
 // Wait is safe to call in parallel, and will return the same result if called
 // multiple times.
 func Wait(ctx context.Context, cancelCh <-chan struct{}) error {
-	// First wait for all the children, and see if any of them return an error
-	children := mctx.Children(ctx)
-	for _, childCtx := range children {
-		if err := Wait(childCtx, cancelCh); err != nil {
-			return err
-		}
-	}
-
 	futErrs, _ := ctx.Value(threadCtxKey(0)).([]*futureErr)
 	for _, futErr := range futErrs {
 		err, ok := futErr.get(cancelCh)
