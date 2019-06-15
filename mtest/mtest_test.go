@@ -7,10 +7,11 @@ import (
 )
 
 func TestRun(t *T) {
-	ctx := Context()
-	ctx, arg := mcfg.WithRequiredString(ctx, "arg", "Required by this test")
-	ctx = WithEnv(ctx, "ARG", "foo")
-	Run(ctx, t, func() {
+	cmp := Component()
+	Env(cmp, "ARG", "foo")
+
+	arg := mcfg.String(cmp, "arg", mcfg.ParamRequired())
+	Run(cmp, t, func() {
 		if *arg != "foo" {
 			t.Fatalf(`arg not set to "foo", is set to %q`, *arg)
 		}

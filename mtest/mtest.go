@@ -6,60 +6,64 @@ import (
 	"testing"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-type envCtxKey int
+type envCmpKey int
 
-// Context creates and returns a root Context suitable for testing.
-func Context() context.Context {
-	ctx := context.Background()
+// Component creates and returns a root Component suitable for testing.
+func Component() *mcmp.Component {
+	cmp := new(mcmp.Component)
 	logger := mlog.NewLogger()
 	logger.SetMaxLevel(mlog.DebugLevel)
-	return mlog.WithLogger(ctx, logger)
+	mlog.SetLogger(cmp, logger)
+
+	mrun.InitHook(cmp, func(context.Context) error {
+		envVals := mcmp.GetSeriesValues(cmp, envCmpKey(0))
+		env := make([]string, 0, len(envVals))
+		for _, val := range envVals {
+			tup := val.([2]string)
+			env = append(env, tup[0]+"="+tup[1])
+		}
+		return mcfg.Populate(cmp, &mcfg.SourceEnv{Env: env})
+	})
+
+	return cmp
 }
 
-// WithEnv sets the given environment variable on the given Context, such that
-// it will be used as if it was a real environment variable when the Run
-// function from this package is called.
-func WithEnv(ctx context.Context, key, val string) context.Context {
-	prevEnv, _ := ctx.Value(envCtxKey(0)).([][2]string)
-	env := make([][2]string, len(prevEnv), len(prevEnv)+1)
-	copy(env, prevEnv)
-	env = append(env, [2]string{key, val})
-	return context.WithValue(ctx, envCtxKey(0), env)
+// Env sets the given environment variable on the given Component, such that it
+// will be used as if it was a real environment variable when the Run function
+// from this package is called.
+//
+// This function will panic if not called on the root Component.
+func Env(cmp *mcmp.Component, key, val string) {
+	if len(cmp.Path()) != 0 {
+		panic("Env should only be called on the root Component")
+	}
+	mcmp.AddSeriesValue(cmp, envCmpKey(0), [2]string{key, val})
 }
 
-// Run performs the following using the given Context:
+// Run performs the following using the given Component:
 //
-// - Calls mcfg.Populate using any variables set by WithEnv.
-//
-// - Calls mrun.Start
+// - Calls mrun.Init, which calls mcfg.Populate using any variables set by Env.
 //
 // - Calls the passed in body callback.
 //
-// - Calls mrun.Stop
+// - Calls mrun.Shutdown
 //
-// The intention is that Run is used within a test on a Context created via
-// NewCtx, after any setup functions have been called (e.g. mnet.WithListener).
-func Run(ctx context.Context, t *testing.T, body func()) {
-	envTups, _ := ctx.Value(envCtxKey(0)).([][2]string)
-	env := make([]string, 0, len(envTups))
-	for _, tup := range envTups {
-		env = append(env, tup[0]+"="+tup[1])
-	}
-
-	ctx, err := mcfg.Populate(ctx, &mcfg.SourceEnv{Env: env})
-	if err != nil {
-		t.Fatal(err)
-	} else if err := mrun.Start(ctx); err != nil {
+// The intention is that Run is used within a test on a Component created via
+// this package's Component function, after any setup functions have been called
+// (e.g. mnet.AddListener).
+func Run(cmp *mcmp.Component, t *testing.T, body func()) {
+	if err := mrun.Init(context.Background(), cmp); err != nil {
 		t.Fatal(err)
 	}
 
 	body()
 
-	if err := mrun.Stop(ctx); err != nil {
+	if err := mrun.Shutdown(context.Background(), cmp); err != nil {
 		t.Fatal(err)
 	}
 }
