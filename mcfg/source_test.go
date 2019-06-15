@@ -1,13 +1,12 @@
 package mcfg
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	. "testing"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
@@ -17,10 +16,9 @@ import (
 // all the code they share
 
 type srcCommonState struct {
-	// availCtxs get updated in place as the run goes on, and mkRoot is used to
-	// create the latest version of the root context based on them
-	availCtxs []*context.Context
-	mkRoot    func() context.Context
+	// availCmps get updated in place as the run goes on, it's easier to keep
+	// track of them this way than by traversing the hierarchy.
+	availCmps []*mcmp.Component
 
 	expPVs []ParamValue
 	// each specific test should wrap this to add the Source itself
@@ -29,31 +27,21 @@ type srcCommonState struct {
 func newSrcCommonState() srcCommonState {
 	var scs srcCommonState
 	{
-		root := context.Background()
-		a := mctx.NewChild(root, "a")
-		b := mctx.NewChild(root, "b")
-		c := mctx.NewChild(root, "c")
-		ab := mctx.NewChild(a, "b")
-		bc := mctx.NewChild(b, "c")
-		abc := mctx.NewChild(ab, "c")
-		scs.availCtxs = []*context.Context{&root, &a, &b, &c, &ab, &bc, &abc}
-		scs.mkRoot = func() context.Context {
-			ab := mctx.WithChild(ab, abc)
-			a := mctx.WithChild(a, ab)
-			b := mctx.WithChild(b, bc)
-			root := mctx.WithChild(root, a)
-			root = mctx.WithChild(root, b)
-			root = mctx.WithChild(root, c)
-			return root
-		}
+		root := new(mcmp.Component)
+		a := root.Child("a")
+		b := root.Child("b")
+		c := root.Child("c")
+		ab := a.Child("b")
+		bc := b.Child("c")
+		abc := ab.Child("c")
+		scs.availCmps = []*mcmp.Component{root, a, b, c, ab, bc, abc}
 	}
 	return scs
 }
 
 type srcCommonParams struct {
 	name        string
-	availCtxI   int // not technically needed, but makes finding the ctx easier
-	path        []string
+	cmp         *mcmp.Component
 	isBool      bool
 	nonBoolType string // "int", "str", "duration", "json"
 	unset       bool
@@ -68,8 +56,8 @@ func (scs srcCommonState) next() srcCommonParams {
 		p.name = mrand.Hex(8)
 	}
 
-	p.availCtxI = mrand.Intn(len(scs.availCtxs))
-	p.path = mctx.Path(*scs.availCtxs[p.availCtxI])
+	availCmpI := mrand.Intn(len(scs.availCmps))
+	p.cmp = scs.availCmps[availCmpI]
 
 	p.isBool = mrand.Intn(8) == 0
 	if !p.isBool {
@@ -105,22 +93,21 @@ func (scs srcCommonState) next() srcCommonParams {
 	return p
 }
 
-// adds the new param to the ctx, and if the param is expected to be set in
+// adds the new param to the cmp, and if the param is expected to be set in
 // the Source adds it to the expected ParamValues as well
-func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
-	thisCtx := scs.availCtxs[p.availCtxI]
-	ctxP := Param{
+func (scs srcCommonState) applyCmpAndPV(p srcCommonParams) srcCommonState {
+	param := Param{
 		Name:     p.name,
 		IsString: p.nonBoolType == "str" || p.nonBoolType == "duration",
 		IsBool:   p.isBool,
 		// the Sources don't actually care about the other fields of Param,
 		// those are only used by Populate once it has all ParamValues together
 	}
-	*thisCtx = WithParam(*thisCtx, ctxP)
-	ctxP, _ = getParam(*thisCtx, ctxP.Name) // get it back out to get any added fields
+	AddParam(p.cmp, param)
+	param, _ = getParam(p.cmp, param.Name) // get it back out to get any added fields
 
 	if !p.unset {
-		pv := ParamValue{Name: ctxP.Name, Path: mctx.Path(ctxP.Context)}
+		pv := ParamValue{Name: param.Name, Path: p.cmp.Path()}
 		if p.isBool {
 			pv.Value = json.RawMessage("true")
 		} else {
@@ -142,8 +129,7 @@ func (scs srcCommonState) applyCtxAndPV(p srcCommonParams) srcCommonState {
 // given a Source asserts that it's Parse method returns the expected
 // ParamValues
 func (scs srcCommonState) assert(s Source) error {
-	root := scs.mkRoot()
-	_, gotPVs, err := s.Parse(root)
+	gotPVs, err := s.Parse(scs.availCmps[0]) // Parse(root)
 	if err != nil {
 		return err
 	}
@@ -154,12 +140,12 @@ func (scs srcCommonState) assert(s Source) error {
 }
 
 func TestSources(t *T) {
-	ctx := context.Background()
-	ctx, a := WithRequiredInt(ctx, "a", "")
-	ctx, b := WithRequiredInt(ctx, "b", "")
-	ctx, c := WithRequiredInt(ctx, "c", "")
+	cmp := new(mcmp.Component)
+	a := Int(cmp, "a", ParamRequired())
+	b := Int(cmp, "b", ParamRequired())
+	c := Int(cmp, "c", ParamRequired())
 
-	_, err := Populate(ctx, Sources{
+	err := Populate(cmp, Sources{
 		&SourceCLI{Args: []string{"--a=1", "--b=666"}},
 		&SourceEnv{Env: []string{"B=2", "C=3"}},
 	})
@@ -172,14 +158,13 @@ func TestSources(t *T) {
 }
 
 func TestSourceParamValues(t *T) {
-	ctx := context.Background()
-	ctx, a := WithRequiredInt(ctx, "a", "")
-	foo := mctx.NewChild(ctx, "foo")
-	foo, b := WithRequiredString(foo, "b", "")
-	foo, c := WithBool(foo, "c", "")
-	ctx = mctx.WithChild(ctx, foo)
+	cmp := new(mcmp.Component)
+	a := Int(cmp, "a", ParamRequired())
+	cmpFoo := cmp.Child("foo")
+	b := String(cmpFoo, "b", ParamRequired())
+	c := Bool(cmpFoo, "c")
 
-	_, err := Populate(ctx, ParamValues{
+	err := Populate(cmp, ParamValues{
 		{Name: "a", Value: json.RawMessage(`4`)},
 		{Path: []string{"foo"}, Name: "b", Value: json.RawMessage(`"bbb"`)},
 		{Path: []string{"foo"}, Name: "c", Value: json.RawMessage("true")},

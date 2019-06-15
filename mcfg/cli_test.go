@@ -2,13 +2,13 @@ package mcfg
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
 	. "testing"
 	"time"
 
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 	"github.com/mediocregopher/mediocre-go-lib/mtest/mchk"
@@ -17,37 +17,38 @@ import (
 )
 
 func TestSourceCLIHelp(t *T) {
-	assertHelp := func(ctx context.Context, subCmdPrefix []string, exp string) {
+	assertHelp := func(cmp *mcmp.Component, subCmdPrefix []string, exp string) {
 		buf := new(bytes.Buffer)
 		src := &SourceCLI{}
-		pM, err := src.cliParams(CollectParams(ctx))
+		pM, err := src.cliParams(CollectParams(cmp))
 		require.NoError(t, err)
-		src.printHelp(ctx, buf, subCmdPrefix, pM)
+		src.printHelp(cmp, buf, subCmdPrefix, pM)
 
 		out := buf.String()
 		ok := regexp.MustCompile(exp).MatchString(out)
 		assert.True(t, ok, "exp:%s (%q)\ngot:%s (%q)", exp, exp, out, out)
 	}
 
-	ctx := context.Background()
-	assertHelp(ctx, nil, `^Usage: \S+
+	cmp := new(mcmp.Component)
+	assertHelp(cmp, nil, `^Usage: \S+
 
 $`)
-	assertHelp(ctx, []string{"foo", "bar"}, `^Usage: \S+ foo bar
+	assertHelp(cmp, []string{"foo", "bar"}, `^Usage: \S+ foo bar
 
 $`)
 
-	ctx, _ = WithInt(ctx, "foo", 5, "Test int param  ") // trailing space should be trimmed
-	ctx, _ = WithBool(ctx, "bar", "Test bool param.")
-	ctx, _ = WithString(ctx, "baz", "baz", "Test string param")
-	ctx, _ = WithRequiredString(ctx, "baz2", "")
-	ctx, _ = WithRequiredString(ctx, "baz3", "")
+	Int(cmp, "foo", ParamDefault(5), ParamUsage("Test int param  ")) // trailing space should be trimmed
+	Bool(cmp, "bar", ParamUsage("Test bool param."))
+	String(cmp, "baz", ParamDefault("baz"), ParamUsage("Test string param"))
+	String(cmp, "baz2", ParamUsage("Required string param"), ParamRequired())
+	String(cmp, "baz3", ParamRequired())
 
-	assertHelp(ctx, nil, `^Usage: \S+ \[options\]
+	assertHelp(cmp, nil, `^Usage: \S+ \[options\]
 
 Options:
 
 	--baz2 \(Required\)
+		Required string param.
 
 	--baz3 \(Required\)
 
@@ -62,11 +63,12 @@ Options:
 
 $`)
 
-	assertHelp(ctx, []string{"foo", "bar"}, `^Usage: \S+ foo bar \[options\]
+	assertHelp(cmp, []string{"foo", "bar"}, `^Usage: \S+ foo bar \[options\]
 
 Options:
 
 	--baz2 \(Required\)
+		Required string param.
 
 	--baz3 \(Required\)
 
@@ -81,9 +83,9 @@ Options:
 
 $`)
 
-	ctx, _ = WithCLISubCommand(ctx, "first", "First sub-command", nil)
-	ctx, _ = WithCLISubCommand(ctx, "second", "Second sub-command", nil)
-	assertHelp(ctx, []string{"foo", "bar"}, `^Usage: \S+ foo bar <sub-command> \[options\]
+	CLISubCommand(cmp, "first", "First sub-command", nil)
+	CLISubCommand(cmp, "second", "Second sub-command", nil)
+	assertHelp(cmp, []string{"foo", "bar"}, `^Usage: \S+ foo bar <sub-command> \[options\]
 
 Sub-commands:
 
@@ -93,6 +95,7 @@ Sub-commands:
 Options:
 
 	--baz2 \(Required\)
+		Required string param.
 
 	--baz3 \(Required\)
 
@@ -107,8 +110,8 @@ Options:
 
 $`)
 
-	ctx, _ = WithCLITail(ctx, "[arg...]")
-	assertHelp(ctx, nil, `^Usage: \S+ <sub-command> \[options\] \[arg\.\.\.\]
+	CLITail(cmp, "[arg...]")
+	assertHelp(cmp, nil, `^Usage: \S+ <sub-command> \[options\] \[arg\.\.\.\]
 
 Sub-commands:
 
@@ -118,6 +121,7 @@ Sub-commands:
 Options:
 
 	--baz2 \(Required\)
+		Required string param.
 
 	--baz3 \(Required\)
 
@@ -165,11 +169,11 @@ func TestSourceCLI(t *T) {
 			s := ss.(state)
 			p := a.Params.(params)
 
-			s.srcCommonState = s.srcCommonState.applyCtxAndPV(p.srcCommonParams)
+			s.srcCommonState = s.srcCommonState.applyCmpAndPV(p.srcCommonParams)
 			if !p.unset {
 				arg := cliKeyPrefix
-				if len(p.path) > 0 {
-					arg += strings.Join(p.path, cliKeyJoin) + cliKeyJoin
+				if path := p.cmp.Path(); len(path) > 0 {
+					arg += strings.Join(path, cliKeyJoin) + cliKeyJoin
 				}
 				arg += p.name
 				if !p.isBool {
@@ -194,10 +198,10 @@ func TestSourceCLI(t *T) {
 	}
 }
 
-func TestWithCLITail(t *T) {
-	ctx := context.Background()
-	ctx, _ = WithInt(ctx, "foo", 5, "")
-	ctx, _ = WithBool(ctx, "bar", "")
+func TestCLITail(t *T) {
+	cmp := new(mcmp.Component)
+	Int(cmp, "foo", ParamDefault(5))
+	Bool(cmp, "bar")
 
 	type testCase struct {
 		args    []string
@@ -228,8 +232,8 @@ func TestWithCLITail(t *T) {
 	}
 
 	for _, tc := range cases {
-		ctx, tail := WithCLITail(ctx, "foo")
-		_, err := Populate(ctx, &SourceCLI{Args: tc.args})
+		tail := CLITail(cmp, "foo")
+		err := Populate(cmp, &SourceCLI{Args: tc.args})
 		massert.Require(t, massert.Comment(massert.All(
 			massert.Nil(err),
 			massert.Equal(tc.expTail, *tail),
@@ -237,13 +241,13 @@ func TestWithCLITail(t *T) {
 	}
 }
 
-func ExampleWithCLITail() {
-	ctx := context.Background()
-	ctx, foo := WithInt(ctx, "foo", 1, "Description of foo.")
-	ctx, tail := WithCLITail(ctx, "[arg...]")
-	ctx, bar := WithString(ctx, "bar", "defaultVal", "Description of bar.")
+func ExampleCLITail() {
+	cmp := new(mcmp.Component)
+	foo := Int(cmp, "foo", ParamDefault(1), ParamUsage("Description of foo."))
+	tail := CLITail(cmp, "[arg...]")
+	bar := String(cmp, "bar", ParamDefault("defaultVal"), ParamUsage("Description of bar."))
 
-	_, err := Populate(ctx, &SourceCLI{
+	err := Populate(cmp, &SourceCLI{
 		Args: []string{"--foo=100", "arg1", "arg2", "arg3"},
 	})
 
@@ -251,9 +255,9 @@ func ExampleWithCLITail() {
 	// Output: err:<nil> foo:100 bar:defaultVal tail:[]string{"arg1", "arg2", "arg3"}
 }
 
-func TestWithCLISubCommand(t *T) {
+func TestCLISubCommand(t *T) {
 	var (
-		ctx   context.Context
+		cmp   *mcmp.Component
 		foo   *int
 		bar   *int
 		baz   *int
@@ -262,22 +266,20 @@ func TestWithCLISubCommand(t *T) {
 	)
 	reset := func() {
 		foo, bar, baz, aFlag, bFlag = nil, nil, nil, nil, nil
-		ctx = context.Background()
-		ctx, foo = WithInt(ctx, "foo", 0, "Description of foo.")
-		ctx, aFlag = WithCLISubCommand(ctx, "a", "Description of a.",
-			func(ctx context.Context) context.Context {
-				ctx, bar = WithInt(ctx, "bar", 0, "Description of bar.")
-				return ctx
+		cmp = new(mcmp.Component)
+		foo = Int(cmp, "foo")
+		aFlag = CLISubCommand(cmp, "a", "Description of a.",
+			func(cmp *mcmp.Component) {
+				bar = Int(cmp, "bar")
 			})
-		ctx, bFlag = WithCLISubCommand(ctx, "b", "Description of b.",
-			func(ctx context.Context) context.Context {
-				ctx, baz = WithInt(ctx, "baz", 0, "Description of baz.")
-				return ctx
+		bFlag = CLISubCommand(cmp, "b", "Description of b.",
+			func(cmp *mcmp.Component) {
+				baz = Int(cmp, "baz")
 			})
 	}
 
 	reset()
-	_, err := Populate(ctx, &SourceCLI{
+	err := Populate(cmp, &SourceCLI{
 		Args: []string{"a", "--foo=1", "--bar=2"},
 	})
 	massert.Require(t,
@@ -290,7 +292,7 @@ func TestWithCLISubCommand(t *T) {
 	)
 
 	reset()
-	_, err = Populate(ctx, &SourceCLI{
+	err = Populate(cmp, &SourceCLI{
 		Args: []string{"b", "--foo=1", "--baz=3"},
 	})
 	massert.Require(t,
@@ -303,40 +305,48 @@ func TestWithCLISubCommand(t *T) {
 	)
 }
 
-func ExampleWithCLISubCommand() {
-	// Create a new Context with a parameter "foo", which can be used across all
-	// sub-commands.
-	ctx := context.Background()
-	ctx, foo := WithInt(ctx, "foo", 0, "Description of foo.")
+func ExampleCLISubCommand() {
+	var (
+		cmp           *mcmp.Component
+		foo, bar, baz *int
+		aFlag, bFlag  *bool
+	)
 
-	// Create a sub-command "a", which has a parameter "bar" specific to it.
-	var bar *int
-	ctx, aFlag := WithCLISubCommand(ctx, "a", "Description of a.",
-		func(ctx context.Context) context.Context {
-			ctx, bar = WithInt(ctx, "bar", 0, "Description of bar.")
-			return ctx
-		})
+	// resetExample re-initializes all variables used in this example. We'll
+	// call it multiple times to show different behaviors depending on what
+	// arguments are passed in.
+	resetExample := func() {
+		// Create a new Component with a parameter "foo", which can be used across
+		// all sub-commands.
+		cmp = new(mcmp.Component)
+		foo = Int(cmp, "foo")
 
-	// Create a sub-command "b", which has a parameter "baz" specific to it.
-	var baz *int
-	ctx, bFlag := WithCLISubCommand(ctx, "b", "Description of b.",
-		func(ctx context.Context) context.Context {
-			ctx, baz = WithInt(ctx, "baz", 0, "Description of baz.")
-			return ctx
-		})
+		// Create a sub-command "a", which has a parameter "bar" specific to it.
+		aFlag = CLISubCommand(cmp, "a", "Description of a.",
+			func(cmp *mcmp.Component) {
+				bar = Int(cmp, "bar")
+			})
+
+		// Create a sub-command "b", which has a parameter "baz" specific to it.
+		bFlag = CLISubCommand(cmp, "b", "Description of b.",
+			func(cmp *mcmp.Component) {
+				baz = Int(cmp, "baz")
+			})
+	}
 
 	// Use Populate with manually generated CLI arguments, calling the "a"
 	// sub-command.
+	resetExample()
 	args := []string{"a", "--foo=1", "--bar=2"}
-	if _, err := Populate(ctx, &SourceCLI{Args: args}); err != nil {
+	if err := Populate(cmp, &SourceCLI{Args: args}); err != nil {
 		panic(err)
 	}
 	fmt.Printf("foo:%d bar:%d aFlag:%v bFlag:%v\n", *foo, *bar, *aFlag, *bFlag)
 
-	// reset output for another Populate, this time calling the "b" sub-command.
-	*aFlag = false
+	// reset for another Populate, this time calling the "b" sub-command.
+	resetExample()
 	args = []string{"b", "--foo=1", "--baz=3"}
-	if _, err := Populate(ctx, &SourceCLI{Args: args}); err != nil {
+	if err := Populate(cmp, &SourceCLI{Args: args}); err != nil {
 		panic(err)
 	}
 	fmt.Printf("foo:%d baz:%d aFlag:%v bFlag:%v\n", *foo, *baz, *aFlag, *bFlag)

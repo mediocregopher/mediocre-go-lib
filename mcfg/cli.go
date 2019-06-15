@@ -1,7 +1,6 @@
 package mcfg
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
@@ -25,64 +25,76 @@ type cliTail struct {
 	descr string
 }
 
-// WithCLITail returns a Context which modifies the behavior of SourceCLI's
-// Parse. Normally when SourceCLI encounters an unexpected Arg it will
-// immediately return an error. This function modifies the Context to indicate
-// to Parse that the unexpected Arg, and all subsequent Args (i.e. the tail),
-// should be set to the returned []string value.
+// CLITail modifies the behavior of SourceCLI's Parse. Normally when SourceCLI
+// encounters an unexpected Arg it will immediately return an error. This
+// function modifies the Component to indicate to Parse that the unexpected Arg,
+// and all subsequent Args (i.e. the tail), should be set to the returned
+// []string value.
 //
 // The descr (optional) will be appended to the "Usage" line which is printed
 // with the help document when "-h" is passed in.
-func WithCLITail(ctx context.Context, descr string) (context.Context, *[]string) {
-	if ctx.Value(cliKeyTail) != nil {
-		panic("WithCLITail already called in this Context")
+//
+// This function panics if not called on a root Component (i.e. a Component
+// which has no parents).
+func CLITail(cmp *mcmp.Component, descr string) *[]string {
+	if len(cmp.Path()) != 0 {
+		panic("CLITail can only be used on a root Component")
 	}
+
 	tailPtr := new([]string)
-	ctx = context.WithValue(ctx, cliKeyTail, cliTail{
+	cmp.SetValue(cliKeyTail, cliTail{
 		dst:   tailPtr,
 		descr: descr,
 	})
-	return ctx, tailPtr
+	return tailPtr
 }
 
-func populateCLITail(ctx context.Context, tail []string) bool {
-	ct, ok := ctx.Value(cliKeyTail).(cliTail)
+func populateCLITail(cmp *mcmp.Component, tail []string) bool {
+	ct, ok := cmp.Value(cliKeyTail).(cliTail)
 	if ok {
 		*ct.dst = tail
 	}
 	return ok
 }
 
-func getCLITailDescr(ctx context.Context) string {
-	ct, _ := ctx.Value(cliKeyTail).(cliTail)
+func getCLITailDescr(cmp *mcmp.Component) string {
+	ct, _ := cmp.Value(cliKeyTail).(cliTail)
 	return ct.descr
 }
 
 type subCmd struct {
 	name, descr string
 	flag        *bool
-	callback    func(context.Context) context.Context
+	callback    func(*mcmp.Component)
 }
 
-// WithCLISubCommand establishes a sub-command which can be activated on the
+// CLISubCommand establishes a sub-command which can be activated on the
 // command-line. When a sub-command is given on the command-line, the bool
 // returned for that sub-command will be set to true.
 //
-// Additionally, the Context which was passed into Parse (i.e. the one passed
-// into Populate) will be passed into the given callback, and the returned one
-// used for subsequent parsing. This allows for setting sub-command specific
-// Params, sub-command specific runtime behavior (via mrun.WithStartHook),
-// support for sub-sub-commands, and more. The callback may be nil.
+// Additionally, the Component which was passed into Parse (i.e. the one passed
+// into Populate) will be passed into the given callback, and can be modified
+// for subsequent parsing. This allows for setting sub-command specific Params,
+// sub-command specific runtime behavior (via mrun.WithStartHook), support for
+// sub-sub-commands, and more. The callback may be nil.
 //
-// If any sub-commands have been defined on a Context which is passed into
+// If any sub-commands have been defined on a Component which is passed into
 // Parse, it is assumed that a sub-command is required on the command-line.
 //
-// Sub-commands must be specified before any other options on the command-line.
-func WithCLISubCommand(ctx context.Context, name, descr string, callback func(context.Context) context.Context) (context.Context, *bool) {
-	m, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
+// When parsing the command-line options, it is assumed that sub-commands will
+// be found before any other options.
+//
+// This function panics if not called on a root Component (i.e. a Component
+// which has no parents).
+func CLISubCommand(cmp *mcmp.Component, name, descr string, callback func(*mcmp.Component)) *bool {
+	if len(cmp.Path()) != 0 {
+		panic("CLISubCommand can only be used on a root Component")
+	}
+
+	m, _ := cmp.Value(cliKeySubCmdM).(map[string]subCmd)
 	if m == nil {
 		m = map[string]subCmd{}
-		ctx = context.WithValue(ctx, cliKeySubCmdM, m)
+		cmp.SetValue(cliKeySubCmdM, m)
 	}
 
 	flag := new(bool)
@@ -92,7 +104,7 @@ func WithCLISubCommand(ctx context.Context, name, descr string, callback func(co
 		flag:     flag,
 		callback: callback,
 	}
-	return ctx, flag
+	return flag
 }
 
 // SourceCLI is a Source which will parse configuration from the CLI.
@@ -100,26 +112,29 @@ func WithCLISubCommand(ctx context.Context, name, descr string, callback func(co
 // Possible CLI options are generated by joining a Param's Path and Name with
 // dashes. For example:
 //
-//	ctx := mctx.New()
-//	ctx = mctx.ChildOf(ctx, "foo")
-//	ctx = mctx.ChildOf(ctx, "bar")
-//	addr := mcfg.String(ctx, "addr", "", "Some address")
+//	cmp := new(mcmp.Component)
+//	cmpFoo = cmp.Child("foo")
+//	cmpFooBar = foo.Child("bar")
+//	addr := mcfg.String(cmpFooBar, "addr", "", "Some address")
 //	// the CLI option to fill addr will be "--foo-bar-addr"
 //
-// If the "-h" option is seen then a help page will be printed to
-// stdout and the process will exit. Since all normally-defined parameters must
-// being with double-dash ("--") they won't ever conflict with the help option.
+// If the "-h" option is seen then a help page will be printed to stdout and the
+// process will exit. Since all normally-defined parameters must being with
+// double-dash ("--") they won't ever conflict with the help option.
 //
 // SourceCLI behaves a little differently with boolean parameters. Setting the
-// value of a boolean parameter directly _must_ be done with an equals, for
-// example: `--boolean-flag=1` or `--boolean-flag=false`. Using the
-// space-separated format will not work. If a boolean has no equal-separated
-// value it is assumed to be setting the value to `true`, as would be expected.
+// value of a boolean parameter directly _must_ be done with an equals, or with
+// no value at all. For example: `--boolean-flag`, `--boolean-flag=1` or
+// `--boolean-flag=false`.  Using the space-separated format will not work. If a
+// boolean has no equal-separated value it is assumed to be setting the value to
+// `true`.
 type SourceCLI struct {
 	Args []string // if nil then os.Args[1:] is used
 
 	DisableHelpPage bool
 }
+
+var _ Source = new(SourceCLI)
 
 const (
 	cliKeyJoin   = "-"
@@ -128,51 +143,51 @@ const (
 	cliHelpArg   = "-h"
 )
 
-// Parse implements the method for the Source interface
-func (cli *SourceCLI) Parse(ctx context.Context) (context.Context, []ParamValue, error) {
+// Parse implements the method for the Source interface.
+func (cli *SourceCLI) Parse(cmp *mcmp.Component) ([]ParamValue, error) {
 	args := cli.Args
 	if cli.Args == nil {
 		args = os.Args[1:]
 	}
-	return cli.parse(ctx, nil, args)
+	return cli.parse(cmp, nil, args)
 }
 
 func (cli *SourceCLI) parse(
-	ctx context.Context,
+	cmp *mcmp.Component,
 	subCmdPrefix, args []string,
 ) (
-	context.Context,
 	[]ParamValue,
 	error,
 ) {
-	pM, err := cli.cliParams(CollectParams(ctx))
+	pM, err := cli.cliParams(CollectParams(cmp))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	printHelpAndExit := func() {
-		cli.printHelp(ctx, os.Stderr, subCmdPrefix, pM)
+		// TODO check DisableHelpPage here?
+		cli.printHelp(cmp, os.Stderr, subCmdPrefix, pM)
 		os.Stderr.Sync()
 		os.Exit(1)
 	}
 
-	// if sub-commands were defined on this Context then handle that first. One
-	// of them should have been given, in which case send the Context through
-	// the callback to obtain a new one (which presumably has further config
-	// options the previous didn't) and call parse again.
-	subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
+	// if sub-commands were defined on this Component then handle that first.
+	// One of them should have been given, in which case send the Context
+	// through the callback to obtain a new one (which presumably has further
+	// config options the previous didn't) and call parse again.
+	subCmdM, _ := cmp.Value(cliKeySubCmdM).(map[string]subCmd)
 	if len(subCmdM) > 0 {
 		subCmd, args, ok := cli.getSubCmd(subCmdM, args)
 		if !ok {
 			printHelpAndExit()
 		}
-		ctx = context.WithValue(ctx, cliKeySubCmdM, nil)
+		cmp.SetValue(cliKeySubCmdM, nil)
 		if subCmd.callback != nil {
-			ctx = subCmd.callback(ctx)
+			subCmd.callback(cmp)
 		}
 		subCmdPrefix = append(subCmdPrefix, subCmd.name)
 		*subCmd.flag = true
-		return cli.parse(ctx, subCmdPrefix, args)
+		return cli.parse(cmp, subCmdPrefix, args)
 	}
 
 	// if sub-commands were not set, then proceed with normal command-line arg
@@ -208,11 +223,11 @@ func (cli *SourceCLI) parse(
 				break
 			}
 			if !pOk {
-				if ok := populateCLITail(ctx, args[i:]); ok {
-					return ctx, pvs, nil
+				if ok := populateCLITail(cmp, args[i:]); ok {
+					return pvs, nil
 				}
-				ctx := mctx.Annotate(context.Background(), "param", arg)
-				return nil, nil, merr.New("unexpected config parameter", ctx)
+				return nil, merr.New("unexpected config parameter",
+					mctx.Annotated("param", arg))
 			}
 		}
 
@@ -231,7 +246,7 @@ func (cli *SourceCLI) parse(
 
 		pvs = append(pvs, ParamValue{
 			Name:  p.Name,
-			Path:  mctx.Path(p.Context),
+			Path:  p.Component.Path(),
 			Value: p.fuzzyParse(pvStrVal),
 		})
 
@@ -242,11 +257,11 @@ func (cli *SourceCLI) parse(
 		pvStrValOk = false
 	}
 	if pOk && !pvStrValOk {
-		ctx := mctx.Annotate(p.Context, "param", key)
-		return nil, nil, merr.New("param expected a value", ctx)
+		ctx := mctx.Annotate(p.Component.Annotated(), "param", key)
+		return nil, merr.New("param expected a value", ctx)
 	}
 
-	return ctx, pvs, nil
+	return pvs, nil
 }
 
 func (cli *SourceCLI) getSubCmd(subCmdM map[string]subCmd, args []string) (subCmd, []string, bool) {
@@ -265,14 +280,14 @@ func (cli *SourceCLI) getSubCmd(subCmdM map[string]subCmd, args []string) (subCm
 func (cli *SourceCLI) cliParams(params []Param) (map[string]Param, error) {
 	m := map[string]Param{}
 	for _, p := range params {
-		key := strings.Join(append(mctx.Path(p.Context), p.Name), cliKeyJoin)
+		key := strings.Join(append(p.Component.Path(), p.Name), cliKeyJoin)
 		m[cliKeyPrefix+key] = p
 	}
 	return m, nil
 }
 
 func (cli *SourceCLI) printHelp(
-	ctx context.Context,
+	cmp *mcmp.Component,
 	w io.Writer,
 	subCmdPrefix []string,
 	pM map[string]Param,
@@ -313,7 +328,7 @@ func (cli *SourceCLI) printHelp(
 		subCmd
 	}
 
-	subCmdM, _ := ctx.Value(cliKeySubCmdM).(map[string]subCmd)
+	subCmdM, _ := cmp.Value(cliKeySubCmdM).(map[string]subCmd)
 	subCmdA := make([]subCmdEntry, 0, len(subCmdM))
 	for name, subCmd := range subCmdM {
 		subCmdA = append(subCmdA, subCmdEntry{name: name, subCmd: subCmd})
@@ -333,7 +348,7 @@ func (cli *SourceCLI) printHelp(
 	if len(pA) > 0 {
 		fmt.Fprint(w, " [options]")
 	}
-	if descr := getCLITailDescr(ctx); descr != "" {
+	if descr := getCLITailDescr(cmp); descr != "" {
 		fmt.Fprintf(w, " %s", descr)
 	}
 	fmt.Fprint(w, "\n\n")
@@ -359,11 +374,6 @@ func (cli *SourceCLI) printHelp(
 			}
 			fmt.Fprint(w, "\n")
 			if usage := p.Usage; usage != "" {
-				// make all usages end with a period, because I say so
-				usage = strings.TrimSpace(usage)
-				if !strings.HasSuffix(usage, ".") {
-					usage += "."
-				}
 				fmt.Fprintln(w, "\t\t"+usage)
 			}
 			fmt.Fprint(w, "\n")

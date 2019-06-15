@@ -1,10 +1,10 @@
 package mcfg
 
 import (
-	"context"
 	"os"
 	"strings"
 
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
@@ -16,10 +16,10 @@ import (
 // underscores and making all characters uppercase, as well as changing all
 // dashes to underscores.
 //
-//	ctx := mctx.New()
-//	ctx = mctx.ChildOf(ctx, "foo")
-//	ctx = mctx.ChildOf(ctx, "bar")
-//	addr := mcfg.String(ctx, "srv-addr", "", "Some address")
+//	cmp := new(mcmp.Component)
+//	cmpFoo := cmp.Child("foo")
+//	cmpFooBar := cmp.Child("bar")
+//	addr := mcfg.String(cmpFooBar, "srv-addr", "", "Some address")
 //	// the Env option to fill addr will be "FOO_BAR_SRV_ADDR"
 //
 type SourceEnv struct {
@@ -32,6 +32,8 @@ type SourceEnv struct {
 	Prefix string
 }
 
+var _ Source = new(SourceEnv)
+
 func (env *SourceEnv) expectedName(path []string, name string) string {
 	out := strings.Join(append(path, name), "_")
 	if env.Prefix != "" {
@@ -42,17 +44,17 @@ func (env *SourceEnv) expectedName(path []string, name string) string {
 	return out
 }
 
-// Parse implements the method for the Source interface
-func (env *SourceEnv) Parse(ctx context.Context) (context.Context, []ParamValue, error) {
+// Parse implements the method for the Source interface.
+func (env *SourceEnv) Parse(cmp *mcmp.Component) ([]ParamValue, error) {
 	kvs := env.Env
 	if kvs == nil {
 		kvs = os.Environ()
 	}
 
-	params := CollectParams(ctx)
+	params := CollectParams(cmp)
 	pM := map[string]Param{}
 	for _, p := range params {
-		name := env.expectedName(mctx.Path(p.Context), p.Name)
+		name := env.expectedName(p.Component.Path(), p.Name)
 		pM[name] = p
 	}
 
@@ -60,18 +62,18 @@ func (env *SourceEnv) Parse(ctx context.Context) (context.Context, []ParamValue,
 	for _, kv := range kvs {
 		split := strings.SplitN(kv, "=", 2)
 		if len(split) != 2 {
-			ctx := mctx.Annotate(context.Background(), "kv", kv)
-			return nil, nil, merr.New("malformed environment key/value pair", ctx)
+			return nil, merr.New("malformed environment key/value pair",
+				mctx.Annotated("kv", kv))
 		}
 		k, v := split[0], split[1]
 		if p, ok := pM[k]; ok {
 			pvs = append(pvs, ParamValue{
 				Name:  p.Name,
-				Path:  mctx.Path(p.Context),
+				Path:  p.Component.Path(),
 				Value: p.fuzzyParse(v),
 			})
 		}
 	}
 
-	return ctx, pvs, nil
+	return pvs, nil
 }

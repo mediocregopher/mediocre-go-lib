@@ -2,21 +2,18 @@
 // parameters and various methods of filling those parameters from external
 // configuration sources (e.g. the command line and environment variables).
 //
-// Parameters are registered onto a context, and that same context is used later
-// to collect and fulfill those parameters. When used with the mctx package's
-// child/parent context functionality, the path of a context is incorporated
-// into the parameter's full name in order to namespace parameters which exist
-// in different contexts.
+// Parameters are registered onto a Component, and that same Component (or one
+// of its ancestors) is used later to collect and fill those parameters.
 package mcfg
 
 import (
-	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
 
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 )
@@ -34,7 +31,7 @@ import (
 func sortParams(params []Param) {
 	sort.Slice(params, func(i, j int) bool {
 		a, b := params[i], params[j]
-		aPath, bPath := mctx.Path(a.Context), mctx.Path(b.Context)
+		aPath, bPath := a.Component.Path(), b.Component.Path()
 		for {
 			switch {
 			case len(aPath) == 0 && len(bPath) == 0:
@@ -52,23 +49,23 @@ func sortParams(params []Param) {
 	})
 }
 
-// CollectParams gathers all Params by recursively retrieving them from this
-// Context and its children. Returned Params are sorted according to their Path
-// and Name.
-func CollectParams(ctx context.Context) []Param {
+// CollectParams gathers all Params by recursively retrieving them from the
+// given Component and its children. Returned Params are sorted according to
+// their Path and Name.
+func CollectParams(cmp *mcmp.Component) []Param {
 	var params []Param
 
-	var visit func(context.Context)
-	visit = func(ctx context.Context) {
-		for _, param := range getLocalParams(ctx) {
+	var visit func(*mcmp.Component)
+	visit = func(cmp *mcmp.Component) {
+		for _, param := range getLocalParams(cmp) {
 			params = append(params, param)
 		}
 
-		for _, childCtx := range mctx.Children(ctx) {
-			visit(childCtx)
+		for _, childCmp := range cmp.Children() {
+			visit(childCmp)
 		}
 	}
-	visit(ctx)
+	visit(cmp)
 
 	sortParams(params)
 	return params
@@ -86,34 +83,31 @@ func paramHash(path []string, name string) string {
 }
 
 // Populate uses the Source to populate the values of all Params which were
-// added to the given Context, and all of its children. Populate may be called
-// multiple times with the same Context, each time will only affect the values
+// added to the given Component, and all of its children. Populate may be called
+// multiple times with the same Component, each time will only affect the values
 // of the Params which were provided by the respective Source.
-//
-// Populating Params can affect the Context itself, for example in the case of
-// sub-commands. For this reason Populate will return a Context instance which
-// may have been affected by the Params (or, if not, will be the same one which
-// was passed in).
 //
 // Source may be nil to indicate that no configuration is provided. Only default
 // values will be used, and if any parameters are required this will error.
-func Populate(ctx context.Context, src Source) (context.Context, error) {
+//
+// Populating Params can affect the Component itself, for example in the case of
+// sub-commands.
+func Populate(cmp *mcmp.Component, src Source) error {
 	if src == nil {
 		src = ParamValues(nil)
 	}
-	ogCtx := ctx
 
-	ctx, pvs, err := src.Parse(ctx)
+	pvs, err := src.Parse(cmp)
 	if err != nil {
-		return ogCtx, err
+		return err
 	}
 
 	// map Params to their hash, so we can match them to their ParamValues.
 	// later. There should not be any duplicates here.
-	params := CollectParams(ctx)
+	params := CollectParams(cmp)
 	pM := map[string]Param{}
 	for _, p := range params {
-		path := mctx.Path(p.Context)
+		path := p.Component.Path()
 		hash := paramHash(path, p.Name)
 		if _, ok := pM[hash]; ok {
 			panic("duplicate Param: " + paramFullName(path, p.Name))
@@ -137,9 +131,9 @@ func Populate(ctx context.Context, src Source) (context.Context, error) {
 		if !p.Required {
 			continue
 		} else if _, ok := pvM[hash]; !ok {
-			ctx := mctx.Annotate(p.Context,
-				"param", paramFullName(mctx.Path(p.Context), p.Name))
-			return ogCtx, merr.New("required parameter is not set", ctx)
+			ctx := mctx.Annotate(p.Component.Annotated(),
+				"param", paramFullName(p.Component.Path(), p.Name))
+			return merr.New("required parameter is not set", ctx)
 		}
 	}
 
@@ -148,9 +142,9 @@ func Populate(ctx context.Context, src Source) (context.Context, error) {
 		// at this point, all ParamValues in pvM have a corresponding pM Param
 		p := pM[hash]
 		if err := json.Unmarshal(pv.Value, p.Into); err != nil {
-			return ogCtx, err
+			return err
 		}
 	}
 
-	return ctx, nil
+	return nil
 }
