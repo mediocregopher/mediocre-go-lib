@@ -107,8 +107,8 @@ type MessageJSON struct {
 	Level       string `json:"level"`
 	Description string `json:"descr"`
 
-	// path -> key -> value
-	Annotations map[string]map[string]string `json:"annotations,omitempty"`
+	// key -> value
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // DefaultHandler initializes and returns a Handler which will write all
@@ -131,7 +131,7 @@ func defaultHandler(out io.Writer) Handler {
 		}
 		if len(msg.Contexts) > 0 {
 			ctx := mctx.MergeAnnotations(msg.Contexts...)
-			msgJSON.Annotations = mctx.Annotations(ctx).StringMapByPath()
+			msgJSON.Annotations = mctx.Annotations(ctx).StringMap()
 		}
 
 		return enc.Encode(msgJSON)

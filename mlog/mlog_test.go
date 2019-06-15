@@ -60,7 +60,7 @@ func TestLogger(t *T) {
 	l.Error("buz", mctx.Annotate(ctx, "a", "b", "c", "d"))
 	massert.Require(t,
 		assertOut(`{"level":"WARN","descr":"baz"}`),
-		assertOut(`{"level":"ERROR","descr":"buz","annotations":{"/":{"a":"b","c":"d"}}}`),
+		assertOut(`{"level":"ERROR","descr":"buz","annotations":{"a":"b","c":"d"}}`),
 	)
 
 	l2 := l.Clone()
