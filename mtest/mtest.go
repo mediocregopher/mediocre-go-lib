@@ -21,7 +21,7 @@ func Component() *mcmp.Component {
 	mlog.SetLogger(cmp, logger)
 
 	mrun.InitHook(cmp, func(context.Context) error {
-		envVals := mcmp.GetSeriesValues(cmp, envCmpKey(0))
+		envVals := mcmp.SeriesValues(cmp, envCmpKey(0))
 		env := make([]string, 0, len(envVals))
 		for _, val := range envVals {
 			tup := val.([2]string)

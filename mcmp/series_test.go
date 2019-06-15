@@ -12,15 +12,15 @@ func TestSeries(t *T) {
 	// test empty state
 	c := new(Component)
 	massert.Require(t,
-		massert.Length(GetSeriesElements(c, key), 0),
-		massert.Length(GetSeriesValues(c, key), 0),
+		massert.Length(SeriesElements(c, key), 0),
+		massert.Length(SeriesValues(c, key), 0),
 	)
 
 	// test after a single value has been added
 	AddSeriesValue(c, key, 1)
 	massert.Require(t,
-		massert.Equal([]SeriesElement{{Value: 1}}, GetSeriesElements(c, key)),
-		massert.Equal([]interface{}{1}, GetSeriesValues(c, key)),
+		massert.Equal([]SeriesElement{{Value: 1}}, SeriesElements(c, key)),
+		massert.Equal([]interface{}{1}, SeriesValues(c, key)),
 	)
 
 	// test after a child has been added
@@ -28,9 +28,9 @@ func TestSeries(t *T) {
 	massert.Require(t,
 		massert.Equal(
 			[]SeriesElement{{Value: 1}, {Child: childA}},
-			GetSeriesElements(c, key),
+			SeriesElements(c, key),
 		),
-		massert.Equal([]interface{}{1}, GetSeriesValues(c, key)),
+		massert.Equal([]interface{}{1}, SeriesValues(c, key)),
 	)
 
 	// test after another value has been added
@@ -38,8 +38,8 @@ func TestSeries(t *T) {
 	massert.Require(t,
 		massert.Equal(
 			[]SeriesElement{{Value: 1}, {Child: childA}, {Value: 2}},
-			GetSeriesElements(c, key),
+			SeriesElements(c, key),
 		),
-		massert.Equal([]interface{}{1, 2}, GetSeriesValues(c, key)),
+		massert.Equal([]interface{}{1, 2}, SeriesValues(c, key)),
 	)
 }

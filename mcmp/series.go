@@ -56,19 +56,19 @@ func AddSeriesValue(c *Component, key, value interface{}) {
 	c.SetValue(numValueElsKey, lastNumValueEls+1)
 }
 
-// GetSeriesElements returns the sequence of values that have been added to the
+// SeriesElements returns the sequence of values that have been added to the
 // Component under the given key via AddSeriesValue, interlaced with children
 // which have been spawned from the Component, in the same respective order the
 // events originally happened.
-func GetSeriesElements(c *Component, key interface{}) []SeriesElement {
+func SeriesElements(c *Component, key interface{}) []SeriesElement {
 	els, _ := getSeriesElements(c, key)
 	return els
 }
 
-// GetSeriesValues returns the sequence of values that have been added to the
+// SeriesValues returns the sequence of values that have been added to the
 // Component under the given key via AddSeriesValue, in the same order the
 // values were added.
-func GetSeriesValues(c *Component, key interface{}) []interface{} {
+func SeriesValues(c *Component, key interface{}) []interface{} {
 	elsKey, numValueElsKey := seriesKeys(key)
 	els, _ := c.Value(elsKey).([]SeriesElement)
 	numValueEls, _ := c.Value(numValueElsKey).(int)

@@ -29,7 +29,7 @@ func triggerHooks(
 	key interface{},
 	next func([]mcmp.SeriesElement) (mcmp.SeriesElement, []mcmp.SeriesElement),
 ) error {
-	els := mcmp.GetSeriesElements(cmp, hookKey{key})
+	els := mcmp.SeriesElements(cmp, hookKey{key})
 	var el mcmp.SeriesElement
 	for {
 		if len(els) == 0 {
