@@ -1,12 +1,12 @@
-// Package mrun provides the ability to register callback hooks on contexts, as
-// well as some convenience functions which allow using a context as a
+// Package mrun provides the ability to register callback hooks on Components,
+// as well as some convenience functions which allow using a context as a
 // wait-group.
 //
 // Hooks
 //
-// Hooks are registered onto contexts and later called in bulk. mrun will take
+// Hooks are registered onto Components and later called in bulk. mrun will take
 // into account the order Hooks are registered, including Hooks within a
-// context's children (see mctx package), and execute them in the same order
+// Component's children (see mcmp package), and execute them in the same order
 // they were registered. For example:
 //
 //	newHook := func(i int) mrun.Hook {
@@ -16,15 +16,14 @@
 //		}
 //	}
 //
-//	ctx := context.Background()
-//	ctx = mrun.WithStartHook(ctx, newHook(0))
+//	cmp := new(mcmp.Component)
+//	mrun.InitHook(cmp, newHook(0))
 //
-//	child := mctx.NewChild(ctx, "child")
-//	child = mrun.WithStartHook(child, newHook(1))
-//	ctx = mctx.WithChild(ctx, child)
+//	cmpChild := cmp.Child("child")
+//	mrun.InitHook(cmpChild, newHook(1))
 //
-//	ctx = mrun.WithStartHook(ctx, newHook(2))
-//	mrun.Start(ctx) // prints "0", "1", then "2"
+//	mrun.InitHook(cmp, newHook(2))
+//	mrun.Init(context.Background(), cmp) // prints "0", "1", then "2"
 //
 package mrun
 
