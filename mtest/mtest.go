@@ -54,8 +54,8 @@ func Env(cmp *mcmp.Component, key, val string) {
 // - Calls mrun.Shutdown
 //
 // The intention is that Run is used within a test on a Component created via
-// this package's Component function, after any setup functions have been called
-// (e.g. mnet.AddListener).
+// this package's Component function, after any instantiation functions have
+// been called (e.g. mnet.InstListener).
 func Run(cmp *mcmp.Component, t *testing.T, body func()) {
 	if err := mrun.Init(context.Background(), cmp); err != nil {
 		t.Fatal(err)

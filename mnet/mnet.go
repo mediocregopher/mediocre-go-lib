@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
@@ -21,16 +22,13 @@ type Listener struct {
 	net.Listener
 	net.PacketConn
 
-	ctx context.Context
-
-	// If set to true before mrun's stop event is run, the stop event will not
-	// cause the MListener to be closed.
-	NoCloseOnStop bool
+	cmp *mcmp.Component
 }
 
 type listenerOpts struct {
-	proto       string
-	defaultAddr string
+	proto           string
+	defaultAddr     string
+	closeOnShutdown bool
 }
 
 func (lOpts listenerOpts) isPacketConn() bool {
@@ -51,67 +49,81 @@ func ListenerProtocol(proto string) ListenerOpt {
 	}
 }
 
+// ListenerCloseOnShutdown sets the Listener's behavior when mrun's Shutdown
+// event is triggered on its Component. If true the Listener will call Close on
+// itself, if false it will do nothing.
+//
+// Defaults to true.
+func ListenerCloseOnShutdown(closeOnShutdown bool) ListenerOpt {
+	return func(opts *listenerOpts) {
+		opts.closeOnShutdown = closeOnShutdown
+	}
+}
+
 // ListenerDefaultAddr adjusts the defaultAddr which the Listener will use. The
 // addr will still be configurable via mcfg regardless of what this is set to.
 // The default is ":0".
-func ListenerAddr(defaultAddr string) ListenerOpt {
+func ListenerDefaultAddr(defaultAddr string) ListenerOpt {
 	return func(opts *listenerOpts) {
 		opts.defaultAddr = defaultAddr
 	}
 }
 
-// WithListener returns a Listener which will be initialized when the start
-// event is triggered on the returned Context (see mrun.Start), and closed when
-// the stop event is triggered on the returned Context (see mrun.Stop).
-func WithListener(ctx context.Context, opts ...ListenerOpt) (context.Context, *Listener) {
+// InstListener instantiates a Listener which will be initialized when the Init
+// event is triggered on the given Component, and closed when the Shutdown event
+// is triggered on the returned Component.
+func InstListener(cmp *mcmp.Component, opts ...ListenerOpt) *Listener {
 	lOpts := listenerOpts{
-		proto:       "tcp",
-		defaultAddr: ":0",
+		proto:           "tcp",
+		defaultAddr:     ":0",
+		closeOnShutdown: true,
 	}
 	for _, opt := range opts {
 		opt(&lOpts)
 	}
 
-	l := &Listener{
-		ctx: mctx.NewChild(ctx, "net"),
-	}
+	cmp = cmp.Child("net")
+	l := &Listener{cmp: cmp}
 
-	var addr *string
-	l.ctx, addr = mcfg.WithString(l.ctx, "listen-addr", lOpts.defaultAddr, strings.ToUpper(lOpts.proto)+" address to listen on in format [host]:port. If port is 0 then a random one will be chosen")
+	addr := mcfg.String(cmp, "listen-addr",
+		mcfg.ParamDefault(lOpts.defaultAddr),
+		mcfg.ParamUsage(
+			strings.ToUpper(lOpts.proto)+" address to listen on in format "+
+				"[host]:port. If port is 0 then a random one will be chosen",
+		),
+	)
 
-	l.ctx = mrun.WithStartHook(l.ctx, func(context.Context) error {
+	mrun.InitHook(cmp, func(context.Context) error {
 		var err error
 
-		l.ctx = mctx.Annotate(l.ctx,
-			"proto", lOpts.proto,
-			"addr", *addr)
+		cmp.Annotate("proto", lOpts.proto, "addr", *addr)
 
 		if lOpts.isPacketConn() {
 			l.PacketConn, err = net.ListenPacket(lOpts.proto, *addr)
-			l.ctx = mctx.Annotate(l.ctx, "addr", l.PacketConn.LocalAddr().String())
+			cmp.Annotate("addr", l.PacketConn.LocalAddr().String())
 		} else {
 			l.Listener, err = net.Listen(lOpts.proto, *addr)
-			l.ctx = mctx.Annotate(l.ctx, "addr", l.Listener.Addr().String())
+			cmp.Annotate("addr", l.Listener.Addr().String())
 		}
 		if err != nil {
-			return merr.Wrap(err, l.ctx)
+			return merr.Wrap(err, cmp.Context())
 		}
 
-		mlog.Info("listening", l.ctx)
+		mlog.From(cmp).Info("listening")
 		return nil
 	})
 
 	// TODO track connections and wait for them to complete before shutting
 	// down?
-	l.ctx = mrun.WithStopHook(l.ctx, func(context.Context) error {
-		if l.NoCloseOnStop {
+	mrun.ShutdownHook(cmp, func(context.Context) error {
+		if !lOpts.closeOnShutdown {
 			return nil
 		}
-		mlog.Info("stopping listener", l.ctx)
+		mlog.From(cmp).Info("shutting down listener")
 		return l.Close()
 	})
 
-	return mctx.WithChild(ctx, l.ctx), l
+	return l
 }
 
 // Accept wraps a call to Accept on the underlying net.Listener, providing debug
@@ -121,20 +133,19 @@ func (l *Listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return conn, err
 	}
-	mlog.Debug("connection accepted",
-		mctx.Annotate(l.ctx, "remoteAddr", conn.RemoteAddr().String()))
+	mlog.From(l.cmp).Debug("connection accepted",
+		mctx.Annotated("remoteAddr", conn.RemoteAddr().String()))
 	return conn, nil
 }
 
 // Close wraps a call to Close on the underlying net.Listener, providing debug
 // logging.
 func (l *Listener) Close() error {
-	mlog.Info("listener closing", l.ctx)
+	mlog.From(l.cmp).Info("listener closing")
 	if l.Listener != nil {
 		return l.Listener.Close()
-	} else {
-		return l.PacketConn.Close()
 	}
+	return l.PacketConn.Close()
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -36,9 +36,9 @@ func TestIsReservedIP(t *T) {
 }
 
 func TestWithListener(t *T) {
-	ctx := mtest.Context()
-	ctx, l := WithListener(ctx)
-	mtest.Run(ctx, t, func() {
+	cmp := mtest.Component()
+	l := InstListener(cmp)
+	mtest.Run(cmp, t, func() {
 		go func() {
 			conn, err := net.Dial("tcp", l.Addr().String())
 			if err != nil {
