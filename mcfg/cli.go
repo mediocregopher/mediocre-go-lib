@@ -257,7 +257,7 @@ func (cli *SourceCLI) parse(
 		pvStrValOk = false
 	}
 	if pOk && !pvStrValOk {
-		ctx := mctx.Annotate(p.Component.Annotated(), "param", key)
+		ctx := mctx.Annotate(p.Component.Context(), "param", key)
 		return nil, merr.New("param expected a value", ctx)
 	}
 

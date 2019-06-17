@@ -131,7 +131,7 @@ func Populate(cmp *mcmp.Component, src Source) error {
 		if !p.Required {
 			continue
 		} else if _, ok := pvM[hash]; !ok {
-			ctx := mctx.Annotate(p.Component.Annotated(),
+			ctx := mctx.Annotate(p.Component.Context(),
 				"param", paramFullName(p.Component.Path(), p.Name))
 			return merr.New("required parameter is not set", ctx)
 		}
