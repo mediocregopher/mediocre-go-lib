@@ -21,6 +21,7 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
 	"github.com/mediocregopher/mediocre-go-lib/mcrypto"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mhttp"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrand"
@@ -30,30 +31,39 @@ import (
 )
 
 func main() {
-	ctx := m.ServiceContext()
-	ctx, cookieName := mcfg.WithString(ctx, "cookie-name", "_totp_proxy", "String to use as the name for cookies")
-	ctx, cookieTimeout := mcfg.WithDuration(ctx, "cookie-timeout", mtime.Duration{1 * time.Hour}, "Timeout for cookies")
+	cmp := m.RootServiceComponent()
+	cookieName := mcfg.String(cmp, "cookie-name",
+		mcfg.ParamDefault("_totp_proxy"),
+		mcfg.ParamUsage("String to use as the name for cookies"))
+	cookieTimeout := mcfg.Duration(cmp, "cookie-timeout",
+		mcfg.ParamDefault(mtime.Duration{1 * time.Hour}),
+		mcfg.ParamUsage("Timeout for cookies"))
 
 	var userSecrets map[string]string
-	ctx = mcfg.WithRequiredJSON(ctx, "users", &userSecrets, "JSON object which maps usernames to their TOTP secret strings")
+	mcfg.JSON(cmp, "users", &userSecrets,
+		mcfg.ParamRequired(),
+		mcfg.ParamUsage("JSON object which maps usernames to their TOTP secret strings"))
 
 	var secret mcrypto.Secret
-	ctx, secretStr := mcfg.WithString(ctx, "secret", "", "String used to sign authentication tokens. If one isn't given a new one will be generated on each startup, invalidating all previous tokens.")
-	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
+	secretStr := mcfg.String(cmp, "secret",
+		mcfg.ParamUsage("String used to sign authentication tokens. If one isn't given a new one will be generated on each startup, invalidating all previous tokens."))
+	mrun.InitHook(cmp, func(context.Context) error {
 		if *secretStr == "" {
 			*secretStr = mrand.Hex(32)
 		}
-		mlog.Info("generating secret", ctx)
+		mlog.From(cmp).Info("generating secret")
 		secret = mcrypto.NewSecret([]byte(*secretStr))
 		return nil
 	})
 
 	proxyHandler := new(struct{ http.Handler })
-	ctx, proxyURL := mcfg.WithRequiredString(ctx, "dst-url", "URL to proxy requests to. Only the scheme and host should be set.")
-	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
+	proxyURL := mcfg.String(cmp, "dst-url",
+		mcfg.ParamRequired(),
+		mcfg.ParamUsage("URL to proxy requests to. Only the scheme and host should be set."))
+	mrun.InitHook(cmp, func(context.Context) error {
 		u, err := url.Parse(*proxyURL)
 		if err != nil {
-			return err
+			return merr.Wrap(err, cmp.Context())
 		}
 		proxyHandler.Handler = mhttp.ReverseProxy(u)
 		return nil
@@ -64,11 +74,13 @@ func main() {
 		ctx := r.Context()
 
 		unauthorized := func() {
+			mlog.From(cmp).Debug("connection is unauthorized")
 			w.Header().Add("WWW-Authenticate", "Basic")
 			w.WriteHeader(http.StatusUnauthorized)
 		}
 
 		authorized := func() {
+			mlog.From(cmp).Debug("connection is authorized, rewriting cookies")
 			sig := mcrypto.SignString(secret, "")
 			http.SetCookie(w, &http.Cookie{
 				Name:   *cookieName,
@@ -79,7 +91,7 @@ func main() {
 		}
 
 		if cookie, _ := r.Cookie(*cookieName); cookie != nil {
-			mlog.Debug("authenticating with cookie",
+			mlog.From(cmp).Debug("authenticating with cookie",
 				mctx.Annotate(ctx, "cookie", cookie.String()))
 			var sig mcrypto.Signature
 			if err := sig.UnmarshalText([]byte(cookie.Value)); err == nil {
@@ -92,7 +104,7 @@ func main() {
 		}
 
 		if user, pass, ok := r.BasicAuth(); ok && pass != "" {
-			mlog.Debug("authenticating with user",
+			mlog.From(cmp).Debug("authenticating with user",
 				mctx.Annotate(ctx, "user", user))
 			if userSecret, ok := userSecrets[user]; ok {
 				if totp.Validate(pass, userSecret) {
@@ -105,6 +117,6 @@ func main() {
 		unauthorized()
 	})
 
-	ctx, _ = mhttp.WithListeningServer(ctx, authHandler)
-	m.StartWaitStop(ctx)
+	mhttp.InstListeningServer(cmp, authHandler)
+	m.Exec(cmp)
 }

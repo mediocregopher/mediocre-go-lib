@@ -9,6 +9,11 @@ type cmpKey int
 
 // SetLogger sets the given logger onto the Component. The logger can later be
 // retrieved from the Component, or any of its children, using From.
+//
+// NOTE that if a Logger is set onto a Component and then changed, even though
+// the Logger is a pointer and so is changed within the Component, SetLogger
+// should still be called. This is due to some caching that From does for
+// performance.
 func SetLogger(cmp *mcmp.Component, l *Logger) {
 	cmp.SetValue(cmpKey(0), l)
 

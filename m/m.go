@@ -76,6 +76,7 @@ func RootComponent() *mcmp.Component {
 				mctx.Annotated("log-level", *logLevelStr))
 		}
 		logger.SetMaxLevel(logLevel)
+		mlog.SetLogger(cmp, logger)
 		return nil
 	})
 
