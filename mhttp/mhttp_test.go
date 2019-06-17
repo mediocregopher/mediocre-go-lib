@@ -13,13 +13,13 @@ import (
 )
 
 func TestMListenAndServe(t *T) {
-	ctx := mtest.Context()
+	cmp := mtest.Component()
 
-	ctx, srv := WithListeningServer(ctx, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	srv := InstListeningServer(cmp, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		io.Copy(rw, r.Body)
 	}))
 
-	mtest.Run(ctx, t, func() {
+	mtest.Run(cmp, t, func() {
 		body := bytes.NewBufferString("HELLO")
 		resp, err := http.Post("http://"+srv.Addr, "text/plain", body)
 		if err != nil {
