@@ -35,13 +35,16 @@ func TestServiceCtx(t *T) {
 		mlog.From(cmpA).Info("foo")
 		mlog.From(cmpA).Debug("bar")
 		massert.Require(t,
-			massert.Length(msgs, 2),
-			massert.Equal(msgs[0].Level.String(), "INFO"),
-			massert.Equal(msgs[0].Description, "foo"),
-			massert.Equal(msgs[0].Contexts, []context.Context{cmpA.Context()}),
-			massert.Equal(msgs[1].Level.String(), "DEBUG"),
-			massert.Equal(msgs[1].Description, "bar"),
+			massert.Length(msgs, 3),
+			massert.Equal(msgs[0].Level.String(), "DEBUG"),
+			massert.Equal(msgs[0].Description, "initialization completed successfully"),
+			massert.Equal(msgs[0].Contexts, []context.Context{cmp.Context()}),
+			massert.Equal(msgs[1].Level.String(), "INFO"),
+			massert.Equal(msgs[1].Description, "foo"),
 			massert.Equal(msgs[1].Contexts, []context.Context{cmpA.Context()}),
+			massert.Equal(msgs[2].Level.String(), "DEBUG"),
+			massert.Equal(msgs[2].Description, "bar"),
+			massert.Equal(msgs[2].Contexts, []context.Context{cmpA.Context()}),
 		)
 	})
 }
