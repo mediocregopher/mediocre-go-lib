@@ -6,7 +6,8 @@ import (
 	"context"
 
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
+	"github.com/mediocregopher/mediocre-go-lib/mlog"
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 	"google.golang.org/api/option"
 )
@@ -14,37 +15,52 @@ import (
 // GCE wraps configuration parameters commonly used for interacting with GCE
 // services.
 type GCE struct {
-	ctx      context.Context
+	cmp      *mcmp.Component
 	Project  string
 	CredFile string
 }
 
-// WithGCE returns a GCE instance which will be initialized and configured when
-// the start event is triggered on the returned Context (see mrun.Start).
-// defaultProject is used as the default value for the mcfg parameter this
-// function creates.
-func WithGCE(parent context.Context, defaultProject string) (context.Context, *GCE) {
-	ctx := mctx.NewChild(parent, "gce")
-	ctx, credFile := mcfg.WithString(ctx, "cred-file", "", "Path to GCE credientials JSON file, if any")
+type gceOpts struct {
+	defaultProject string
+}
 
-	var project *string
-	const projectUsage = "Name of GCE project to use"
-	if defaultProject == "" {
-		ctx, project = mcfg.WithRequiredString(ctx, "project", projectUsage)
-	} else {
-		ctx, project = mcfg.WithString(ctx, "project", defaultProject, projectUsage)
+// GCEOption is a value which adjusts the behavior of InstGCE.
+type GCEOption func(*gceOpts)
+
+// GCEDefaultProject sets the given string to be the default project of the GCE
+// instance. The default project will still be configurable via mcfg regardless
+// of what this is set to.
+func GCEDefaultProject(defaultProject string) GCEOption {
+	return func(opts *gceOpts) {
+		opts.defaultProject = defaultProject
+	}
+}
+
+// InstGCE instantiates a GCE which will be initialized when the Init event is
+// triggered on the given Component. defaultProject is used as the default value
+// for the mcfg parameter this function creates.
+func InstGCE(cmp *mcmp.Component, options ...GCEOption) *GCE {
+	var opts gceOpts
+	for _, opt := range options {
+		opt(&opts)
 	}
 
-	var gce GCE
-	ctx = mrun.WithStartHook(ctx, func(context.Context) error {
+	gce := GCE{cmp: cmp.Child("gce")}
+	credFile := mcfg.String(gce.cmp, "cred-file",
+		mcfg.ParamUsage("Path to GCE credientials JSON file, if any"))
+	project := mcfg.String(gce.cmp, "project",
+		mcfg.ParamDefaultOrRequired(opts.defaultProject),
+		mcfg.ParamUsage("Name of GCE project to use"))
+
+	mrun.InitHook(gce.cmp, func(ctx context.Context) error {
 		gce.Project = *project
 		gce.CredFile = *credFile
-		gce.ctx = mctx.Annotate(ctx, "project", gce.Project)
+		gce.cmp.Annotate("project", gce.Project)
+		mlog.From(gce.cmp).Info("GCE config initialized", ctx)
 		return nil
 	})
 
-	gce.ctx = ctx
-	return mctx.WithChild(parent, ctx), &gce
+	return &gce
 }
 
 // ClientOptions generates and returns the ClientOption instances which can be
@@ -59,5 +75,5 @@ func (gce *GCE) ClientOptions() []option.ClientOption {
 
 // Context returns the annotated Context from this instance's initialization.
 func (gce *GCE) Context() context.Context {
-	return gce.ctx
+	return gce.cmp.Context()
 }
