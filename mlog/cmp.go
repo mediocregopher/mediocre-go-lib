@@ -7,6 +7,11 @@ import (
 
 type cmpKey int
 
+const (
+	cmpKeyLogger cmpKey = iota
+	cmpKeyCachedLogger
+)
+
 // SetLogger sets the given logger onto the Component. The logger can later be
 // retrieved from the Component, or any of its children, using From.
 //
@@ -15,14 +20,14 @@ type cmpKey int
 // should still be called. This is due to some caching that From does for
 // performance.
 func SetLogger(cmp *mcmp.Component, l *Logger) {
-	cmp.SetValue(cmpKey(0), l)
+	cmp.SetValue(cmpKeyLogger, l)
 
 	// If the base Logger on this Component gets changed, then the cached Logger
 	// from From on this Component, and all of its Children, ought to be reset,
 	// so that any changes can be reflected in their loggers.
 	var resetFromLogger func(*mcmp.Component)
 	resetFromLogger = func(cmp *mcmp.Component) {
-		cmp.SetValue(cmpKey(1), nil)
+		cmp.SetValue(cmpKeyCachedLogger, nil)
 		for _, childCmp := range cmp.Children() {
 			resetFromLogger(childCmp)
 		}
@@ -38,7 +43,7 @@ var DefaultLogger = NewLogger()
 // ancestors, using SetLogger. If no Logger was ever set then DefaultLogger is
 // returned.
 func GetLogger(cmp *mcmp.Component) *Logger {
-	if l, ok := cmp.InheritedValue(cmpKey(0)); ok {
+	if l, ok := mcmp.InheritedValue(cmp, cmpKeyLogger); ok {
 		return l.(*Logger)
 	}
 	return DefaultLogger
@@ -48,7 +53,7 @@ func GetLogger(cmp *mcmp.Component) *Logger {
 // some annotations related to the Component itself to all Messages being
 // logged.
 func From(cmp *mcmp.Component) *Logger {
-	if l, _ := cmp.Value(cmpKey(1)).(*Logger); l != nil {
+	if l, _ := cmp.Value(cmpKeyCachedLogger).(*Logger); l != nil {
 		return l
 	}
 
@@ -61,7 +66,7 @@ func From(cmp *mcmp.Component) *Logger {
 		msg.Contexts = append(msg.Contexts[:0], ctx)
 		return oldHandler(msg)
 	})
-	cmp.SetValue(cmpKey(1), l)
+	cmp.SetValue(cmpKeyCachedLogger, l)
 
 	return l
 }
