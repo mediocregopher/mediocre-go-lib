@@ -11,6 +11,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/mediocregopher/mediocre-go-lib/mcfg"
+	"github.com/mediocregopher/mediocre-go-lib/mcmp"
 	"github.com/mediocregopher/mediocre-go-lib/mctx"
 	"github.com/mediocregopher/mediocre-go-lib/merr"
 	"github.com/mediocregopher/mediocre-go-lib/mlog"
@@ -20,44 +21,49 @@ import (
 // SQL is a wrapper around a sqlx client which provides more functionality.
 type SQL struct {
 	*sqlx.DB
-	ctx context.Context
+	cmp *mcmp.Component
 }
 
-// WithMySQL returns a SQL instance which will be initialized and configured
-// when the start event is triggered on the returned Context (see mrun.Start).
-// The SQL instance will have Close called on it when the stop event is
-// triggered on the returned Context (see mrun.Stop).
+// InstMySQL returns a SQL instance which will be initialized when the Init
+// event is triggered on the given Component. The SQL instance will have Close
+// called on it when the Shutdown event is triggered on the given Component.
 //
 // defaultDB indicates the name of the database in MySQL to use by default,
 // though it will be overwritable in the config.
-func WithMySQL(parent context.Context, defaultDB string) (context.Context, *SQL) {
-	ctx := mctx.NewChild(parent, "mysql")
-	sql := new(SQL)
+func InstMySQL(cmp *mcmp.Component, defaultDB string) *SQL {
+	sql := SQL{cmp: cmp.Child("mysql")}
 
-	ctx, addr := mcfg.WithString(ctx, "addr", "[::1]:3306", "Address where mysql server can be found")
-	ctx, user := mcfg.WithString(ctx, "user", "root", "User to authenticate to mysql server as")
-	ctx, pass := mcfg.WithString(ctx, "password", "", "Password to authenticate to mysql server with")
-	ctx, db := mcfg.WithString(ctx, "database", defaultDB, "mysql database to use")
-	ctx = mrun.WithStartHook(ctx, func(innerCtx context.Context) error {
-		sql.ctx = mctx.Annotate(sql.ctx, "addr", *addr, "user", *user)
+	addr := mcfg.String(sql.cmp, "addr",
+		mcfg.ParamDefault("[::1]:3306"),
+		mcfg.ParamUsage("Address where MySQL server can be found"))
+	user := mcfg.String(sql.cmp, "user",
+		mcfg.ParamDefault("root"),
+		mcfg.ParamUsage("User to authenticate to MySQL server as"))
+	pass := mcfg.String(sql.cmp, "password",
+		mcfg.ParamUsage("Password to authenticate to MySQL server with"))
+	db := mcfg.String(sql.cmp, "database",
+		mcfg.ParamDefault(defaultDB),
+		mcfg.ParamUsage("MySQL database to use"))
 
+	mrun.InitHook(sql.cmp, func(ctx context.Context) error {
+		sql.cmp.Annotate("addr", *addr, "user", *user)
 		dsn := fmt.Sprintf("%s:%s@tcp(%s)/%s", *user, *pass, *addr, *db)
-		mlog.Debug("constructed dsn", mctx.Annotate(sql.ctx, "dsn", dsn))
-		mlog.Info("connecting to mysql server", sql.ctx)
+		mlog.From(sql.cmp).Debug("constructed dsn", mctx.Annotate(ctx, "dsn", dsn))
+		mlog.From(sql.cmp).Info("connecting to MySQL server", ctx)
 		var err error
-		sql.DB, err = sqlx.ConnectContext(innerCtx, "mysql", dsn)
-		return merr.Wrap(err, sql.ctx)
-	})
-	ctx = mrun.WithStopHook(ctx, func(innerCtx context.Context) error {
-		mlog.Info("closing connection to sql server", sql.ctx)
-		return sql.Close()
+		sql.DB, err = sqlx.ConnectContext(ctx, "mysql", dsn)
+		return merr.Wrap(err, sql.cmp.Context(), ctx)
 	})
 
-	sql.ctx = ctx
-	return mctx.WithChild(parent, ctx), sql
+	mrun.ShutdownHook(sql.cmp, func(ctx context.Context) error {
+		mlog.From(sql.cmp).Info("closing connection to MySQL server", ctx)
+		return merr.Wrap(sql.Close(), sql.cmp.Context(), ctx)
+	})
+
+	return &sql
 }
 
 // Context returns the annotated Context from this instance's initialization.
 func (sql *SQL) Context() context.Context {
-	return sql.Context()
+	return sql.cmp.Context()
 }
