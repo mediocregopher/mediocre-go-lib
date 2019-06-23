@@ -15,7 +15,7 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mrun"
 )
 
-// Listener is returned by WithListen and simply wraps a net.Listener.
+// Listener is returned by InstListener and simply wraps a net.Listener.
 type Listener struct {
 	// One of these will be populated during the start hook, depending on the
 	// protocol configured.
@@ -38,7 +38,7 @@ func (lOpts listenerOpts) isPacketConn() bool {
 		strings.HasPrefix(proto, "ip")
 }
 
-// ListenerOpt is a value which adjusts the behavior of WithListener.
+// ListenerOpt is a value which adjusts the behavior of InstListener.
 type ListenerOpt func(*listenerOpts)
 
 // ListenerProtocol adjusts the protocol which the Listener uses. The default is
