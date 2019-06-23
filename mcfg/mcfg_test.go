@@ -47,3 +47,23 @@ func TestPopulate(t *T) {
 		assert.Equal(t, 3, *c)
 	}
 }
+
+func TestParamDefaultOrRequired(t *T) {
+	{
+		cmp := new(mcmp.Component)
+		Int(cmp, "a", ParamDefaultOrRequired(0))
+		params := CollectParams(cmp)
+		assert.Equal(t, "a", params[0].Name)
+		assert.Equal(t, true, params[0].Required)
+		assert.Equal(t, new(int), params[0].Into)
+	}
+	{
+		cmp := new(mcmp.Component)
+		Int(cmp, "a", ParamDefaultOrRequired(1))
+		i := 1
+		params := CollectParams(cmp)
+		assert.Equal(t, "a", params[0].Name)
+		assert.Equal(t, false, params[0].Required)
+		assert.Equal(t, &i, params[0].Into)
+	}
+}

@@ -83,6 +83,18 @@ func ParamDefault(value interface{}) ParamOption {
 	}
 }
 
+// ParamDefaultOrRequired returns a ParamOption whose behavior depends on the
+// given value. If the given value is the zero value for its type, then this returns
+// ParamRequired(), otherwise this returns ParamDefault(value).
+func ParamDefaultOrRequired(value interface{}) ParamOption {
+	v := reflect.ValueOf(value)
+	zero := reflect.Zero(v.Type())
+	if v.Interface() == zero.Interface() {
+		return ParamRequired()
+	}
+	return ParamDefault(value)
+}
+
 // ParamUsage returns a ParamOption which sets the usage string on the Param.
 // This is used in some Sources, like SourceCLI, when displaying information
 // about available parameters.
