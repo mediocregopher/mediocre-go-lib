@@ -69,20 +69,6 @@ func (c *Component) Value(key interface{}) interface{} {
 	return value
 }
 
-// InheritedValue returns the value which has been set for the given key. It first
-// looks for the key on the receiver Component. If not found, it will look on
-// its parent Component, and so on, until the key is found. If the key is not
-// found on the root Component then false is returned.
-func (c *Component) InheritedValue(key interface{}) (interface{}, bool) {
-	value, ok := c.value(key)
-	if ok {
-		return value, ok
-	} else if c.parent == nil {
-		return nil, false
-	}
-	return c.parent.InheritedValue(key)
-}
-
 // Values returns all key/value pairs which have been set via SetValue.
 func (c *Component) Values() map[interface{}]interface{} {
 	c.l.RLock()
@@ -135,6 +121,13 @@ func (c *Component) Children() []*Component {
 		children[i] = c.children[i].Component
 	}
 	return children
+}
+
+// Parent returns the Component from which this one was created via the Child
+// method. This returns nil if this Component was not created via Child (and is
+// therefore the root Component).
+func (c *Component) Parent() *Component {
+	return c.parent
 }
 
 // Name returns the name this Component was created with (via the Child method),
@@ -214,5 +207,19 @@ func BreadthFirstVisit(c *Component, callback func(*Component) bool) {
 			queue = append(queue, child)
 		}
 		queue = queue[1:]
+	}
+}
+
+// InheritedValue returns the value which has been set for the given key. It
+// first looks for the key on the receiver Component. If not found, it will look
+// on its parent Component, and so on, until the key is found. If the key is not
+// found on any Components, up to the root Component, then false is returned.
+func InheritedValue(c *Component, key interface{}) (interface{}, bool) {
+	if c.HasValue(key) {
+		return c.kv[key], true
+	} else if parent := c.Parent(); parent == nil {
+		return nil, false
+	} else {
+		return InheritedValue(parent, key)
 	}
 }

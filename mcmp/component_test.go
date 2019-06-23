@@ -53,23 +53,6 @@ func TestComponent(t *T) {
 		assertValue(child, "bar", 2),
 	)
 
-	assertInheritedValue := func(c *Component, key, expectedValue interface{}) massert.Assertion {
-		val, ok := c.InheritedValue(key)
-		return massert.All(
-			massert.Equal(expectedValue, val),
-			massert.Equal(expectedValue != nil, ok),
-		)
-	}
-
-	// test that InheritedValue does what it's supposed to
-	massert.Require(t,
-		assertInheritedValue(c, "foo", 1),
-		assertInheritedValue(child, "foo", 1),
-		assertInheritedValue(c, "bar", nil),
-		assertInheritedValue(child, "bar", 2),
-		assertInheritedValue(c, "xxx", nil),
-		assertInheritedValue(child, "xxx", nil),
-	)
 }
 func TestBreadFirstVisit(t *T) {
 	cmp := new(Component)
@@ -102,4 +85,30 @@ func TestBreadFirstVisit(t *T) {
 			massert.Equal([]*Component{cmp, cmp1, cmp2}, got),
 		)
 	}
+}
+
+func TestInheritedValue(t *T) {
+
+	assertInheritedValue := func(c *Component, key, expectedValue interface{}) massert.Assertion {
+		val, ok := InheritedValue(c, key)
+		return massert.All(
+			massert.Equal(expectedValue, val),
+			massert.Equal(expectedValue != nil, ok),
+		)
+	}
+
+	c := new(Component)
+	c.SetValue("foo", 1)
+	child := c.Child("child")
+	child.SetValue("bar", 2)
+
+	// test that InheritedValue does what it's supposed to
+	massert.Require(t,
+		assertInheritedValue(c, "foo", 1),
+		assertInheritedValue(child, "foo", 1),
+		assertInheritedValue(c, "bar", nil),
+		assertInheritedValue(child, "bar", 2),
+		assertInheritedValue(c, "xxx", nil),
+		assertInheritedValue(child, "xxx", nil),
+	)
 }
