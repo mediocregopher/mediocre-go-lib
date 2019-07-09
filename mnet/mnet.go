@@ -93,20 +93,20 @@ func InstListener(cmp *mcmp.Component, opts ...ListenerOpt) *Listener {
 		),
 	)
 
-	mrun.InitHook(cmp, func(context.Context) error {
-		var err error
-
+	mrun.InitHook(cmp, func(ctx context.Context) error {
 		cmp.Annotate("proto", lOpts.proto, "addr", *addr)
 
+		var err error
 		if lOpts.isPacketConn() {
-			l.PacketConn, err = net.ListenPacket(lOpts.proto, *addr)
+			if l.PacketConn, err = net.ListenPacket(lOpts.proto, *addr); err != nil {
+				return merr.Wrap(err, cmp.Context(), ctx)
+			}
 			cmp.Annotate("addr", l.PacketConn.LocalAddr().String())
 		} else {
-			l.Listener, err = net.Listen(lOpts.proto, *addr)
+			if l.Listener, err = net.Listen(lOpts.proto, *addr); err != nil {
+				return merr.Wrap(err, cmp.Context(), ctx)
+			}
 			cmp.Annotate("addr", l.Listener.Addr().String())
-		}
-		if err != nil {
-			return merr.Wrap(err, cmp.Context())
 		}
 
 		mlog.From(cmp).Info("listening")
