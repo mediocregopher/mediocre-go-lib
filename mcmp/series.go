@@ -65,6 +65,15 @@ func SeriesElements(c *Component, key interface{}) []SeriesElement {
 	return els
 }
 
+// SeriesGetElement returns the ith element in the series at the given key.
+func SeriesGetElement(c *Component, key interface{}, i int) (SeriesElement, bool) {
+	els, _ := getSeriesElements(c, key)
+	if i >= len(els) {
+		return SeriesElement{}, false
+	}
+	return els[i], true
+}
+
 // SeriesValues returns the sequence of values that have been added to the
 // Component under the given key via AddSeriesValue, in the same order the
 // values were added.

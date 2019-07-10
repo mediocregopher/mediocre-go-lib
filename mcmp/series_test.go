@@ -8,12 +8,24 @@ import (
 
 func TestSeries(t *T) {
 	key := "foo"
+	c := new(Component)
+
+	assertGetElement := func(i int, expEl SeriesElement) massert.Assertion {
+		el, ok := SeriesGetElement(c, key, i)
+		if expEl == (SeriesElement{}) {
+			return massert.Equal(false, ok)
+		}
+		return massert.All(
+			massert.Equal(expEl, el),
+			massert.Equal(true, ok),
+		)
+	}
 
 	// test empty state
-	c := new(Component)
 	massert.Require(t,
 		massert.Length(SeriesElements(c, key), 0),
 		massert.Length(SeriesValues(c, key), 0),
+		assertGetElement(0, SeriesElement{}),
 	)
 
 	// test after a single value has been added
@@ -21,6 +33,8 @@ func TestSeries(t *T) {
 	massert.Require(t,
 		massert.Equal([]SeriesElement{{Value: 1}}, SeriesElements(c, key)),
 		massert.Equal([]interface{}{1}, SeriesValues(c, key)),
+		assertGetElement(0, SeriesElement{Value: 1}),
+		assertGetElement(1, SeriesElement{}),
 	)
 
 	// test after a child has been added
@@ -31,6 +45,9 @@ func TestSeries(t *T) {
 			SeriesElements(c, key),
 		),
 		massert.Equal([]interface{}{1}, SeriesValues(c, key)),
+		assertGetElement(0, SeriesElement{Value: 1}),
+		assertGetElement(1, SeriesElement{Child: childA}),
+		assertGetElement(2, SeriesElement{}),
 	)
 
 	// test after another value has been added
@@ -41,5 +58,9 @@ func TestSeries(t *T) {
 			SeriesElements(c, key),
 		),
 		massert.Equal([]interface{}{1, 2}, SeriesValues(c, key)),
+		assertGetElement(0, SeriesElement{Value: 1}),
+		assertGetElement(1, SeriesElement{Child: childA}),
+		assertGetElement(2, SeriesElement{Value: 2}),
+		assertGetElement(3, SeriesElement{}),
 	)
 }
