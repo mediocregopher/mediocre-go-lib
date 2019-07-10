@@ -27,27 +27,31 @@ func triggerHooks(
 	ctx context.Context,
 	cmp *mcmp.Component,
 	key interface{},
-	next func([]mcmp.SeriesElement) (mcmp.SeriesElement, []mcmp.SeriesElement),
+	start func(*mcmp.Component) int,
+	next func(int) int,
 ) error {
-	els := mcmp.SeriesElements(cmp, hookKey{key})
-	var el mcmp.SeriesElement
+	i := start(cmp)
 	for {
-		if len(els) == 0 {
-			break
+		if i < 0 {
+			return nil
 		}
-		el, els = next(els)
-		if el.Child != nil {
-			if err := triggerHooks(ctx, el.Child, key, next); err != nil {
+
+		el, ok := mcmp.SeriesGetElement(cmp, hookKey{key}, i)
+		if !ok {
+			return nil
+		} else if el.Child != nil {
+			if err := triggerHooks(ctx, el.Child, key, start, next); err != nil {
 				return err
 			}
-			continue
+		} else {
+			hook := el.Value.(Hook)
+			if err := hook(ctx); err != nil {
+				return err
+			}
 		}
-		hook := el.Value.(Hook)
-		if err := hook(ctx); err != nil {
-			return err
-		}
+
+		i = next(i)
 	}
-	return nil
 }
 
 // TriggerHooks causes all Hooks registered with AddHook on the Component under
@@ -65,24 +69,20 @@ func TriggerHooks(
 	cmp *mcmp.Component,
 	key interface{},
 ) error {
-	next := func(els []mcmp.SeriesElement) (
-		mcmp.SeriesElement, []mcmp.SeriesElement,
-	) {
-		return els[0], els[1:]
-	}
-	return triggerHooks(ctx, cmp, key, next)
+	start := func(*mcmp.Component) int { return 0 }
+	next := func(i int) int { return i + 1 }
+	return triggerHooks(ctx, cmp, key, start, next)
 }
 
 // TriggerHooksReverse is the same as TriggerHooks except that registered Hooks
 // are called in the reverse order in which they were registered.
 func TriggerHooksReverse(ctx context.Context, cmp *mcmp.Component, key interface{}) error {
-	next := func(els []mcmp.SeriesElement) (
-		mcmp.SeriesElement, []mcmp.SeriesElement,
-	) {
-		last := len(els) - 1
-		return els[last], els[:last]
+	start := func(cmp *mcmp.Component) int {
+		els := mcmp.SeriesElements(cmp, hookKey{key})
+		return len(els) - 1
 	}
-	return triggerHooks(ctx, cmp, key, next)
+	next := func(i int) int { return i - 1 }
+	return triggerHooks(ctx, cmp, key, start, next)
 }
 
 type builtinEvent int
