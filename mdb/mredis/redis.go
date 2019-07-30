@@ -17,11 +17,31 @@ type Redis struct {
 	cmp *mcmp.Component
 }
 
+type redisOpts struct {
+	dialOpts []radix.DialOpt
+}
+
+// RedisOption is a value which adjusts the behavior of InstRedis.
+type RedisOption func(*redisOpts)
+
+// RedisDialOpts specifies that the given set of DialOpts should be used when
+// creating any new connections.
+func RedisDialOpts(dialOpts ...radix.DialOpt) RedisOption {
+	return func(opts *redisOpts) {
+		opts.dialOpts = dialOpts
+	}
+}
+
 // InstRedis instantiates a Redis instance which will be initialized when the
 // Init event is triggered on the given Component. The redis client will have
 // Close called on it when the Shutdown event is triggered on the given
 // Component.
-func InstRedis(parent *mcmp.Component) *Redis {
+func InstRedis(parent *mcmp.Component, options ...RedisOption) *Redis {
+	var opts redisOpts
+	for _, opt := range options {
+		opt(&opts)
+	}
+
 	cmp := parent.Child("redis")
 	client := new(struct{ radix.Client })
 
@@ -35,7 +55,12 @@ func InstRedis(parent *mcmp.Component) *Redis {
 		cmp.Annotate("addr", *addr, "poolSize", *poolSize)
 		mlog.From(cmp).Info("connecting to redis", ctx)
 		var err error
-		client.Client, err = radix.NewPool("tcp", *addr, *poolSize)
+		client.Client, err = radix.NewPool(
+			"tcp", *addr, *poolSize,
+			radix.PoolConnFunc(func(network, addr string) (radix.Conn, error) {
+				return radix.Dial(network, addr, opts.dialOpts...)
+			}),
+		)
 		return err
 	})
 	mrun.ShutdownHook(cmp, func(ctx context.Context) error {

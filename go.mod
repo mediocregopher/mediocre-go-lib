@@ -5,7 +5,7 @@ require (
 	github.com/boombuler/barcode v1.0.0 // indirect
 	github.com/go-sql-driver/mysql v1.4.0
 	github.com/jmoiron/sqlx v1.2.0
-	github.com/mediocregopher/radix/v3 v3.3.1-0.20190716044027-c72935c74ab3
+	github.com/mediocregopher/radix/v3 v3.3.2
 	github.com/pquerna/otp v1.1.0
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/net v0.0.0-20190213061140-3a22650c66bd // indirect
