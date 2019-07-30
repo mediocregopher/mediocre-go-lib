@@ -14,6 +14,16 @@ type Rand struct {
 	*rand.Rand
 }
 
+// NewSyncRand initializes and returns a new Rand instance using the given
+// Source. The returned Rand will be safe for concurrent use.
+//
+// This will panic if the given Source doesn't implement rand.Source64.
+func NewSyncRand(src rand.Source) Rand {
+	return Rand{
+		Rand: rand.New(&lockedSource{src: src.(rand.Source64)}),
+	}
+}
+
 // Bytes returns n random bytes.
 func (r Rand) Bytes(n int) []byte {
 	b := make([]byte, n)
@@ -67,7 +77,7 @@ func (r Rand) Element(slice interface{}, weight func(i int) uint64) interface{} 
 
 // DefaultRand is an instance off Rand whose methods are directly exported by
 // this package for convenience.
-var DefaultRand = Rand{Rand: rand.New(rand.NewSource(time.Now().UnixNano()))}
+var DefaultRand = NewSyncRand(rand.NewSource(time.Now().UnixNano()))
 
 // Methods off DefaultRand exported to the top level of this package.
 var (
