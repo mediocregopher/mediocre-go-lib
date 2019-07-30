@@ -135,11 +135,10 @@ func TestStream(t *T) {
 
 		// call XPENDING to see if anything comes back, nothing should.
 		t.Log("checking for leftover pending entries")
-		var xpendingRes []interface{}
-		err := redis.Do(radix.Cmd(&xpendingRes, "XPENDING", streamKey, group))
+		numPending, err := stream.getNumPending()
 		if err != nil {
 			t.Fatalf("error calling XPENDING: %v", err)
-		} else if numPending := xpendingRes[0].(int64); numPending != 0 {
+		} else if numPending > 0 {
 			t.Fatalf("XPENDING says there's %v pending msgs, there should be 0", numPending)
 		}
 

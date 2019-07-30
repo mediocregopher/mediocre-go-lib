@@ -128,6 +128,15 @@ func NewStream(r *Redis, opts StreamOpts) *Stream {
 	}
 }
 
+func (s *Stream) getNumPending() (int64, error) {
+	var res []interface{}
+	err := s.client.Do(radix.Cmd(&res, "XPENDING", s.opts.Key, s.opts.Group))
+	if err != nil {
+		return 0, merr.Wrap(err, s.client.cmp.Context())
+	}
+	return res[0].(int64), nil
+}
+
 func (s *Stream) init() error {
 	// MKSTREAM is not documented, but will make the stream if it doesn't
 	// already exist. Only the most elite redis gurus know of it's
@@ -138,6 +147,12 @@ func (s *Stream) init() error {
 	} else if errStr := err.Error(); !strings.HasPrefix(errStr, `BUSYGROUP Consumer Group name already exists`) {
 		return merr.Wrap(err, s.client.cmp.Context())
 	}
+
+	numPending, err := s.getNumPending()
+	if err != nil {
+		return err
+	}
+	atomic.StoreInt64(&s.numPending, numPending)
 
 	// if we're here it means init succeeded, mark as such and gtfo
 	s.hasInit = true
