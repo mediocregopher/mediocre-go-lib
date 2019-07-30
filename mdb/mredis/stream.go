@@ -174,7 +174,8 @@ func (s *Stream) fillBufFrom(id string) error {
 	if s.opts.ReadCount > 0 {
 		args = append(args, "COUNT", strconv.Itoa(s.opts.ReadCount))
 	}
-	args = append(args, "BLOCK", strconv.Itoa(int(s.opts.Block.Seconds())))
+	blockMS := int(s.opts.Block / time.Millisecond)
+	args = append(args, "BLOCK", strconv.Itoa(blockMS))
 	args = append(args, "STREAMS", s.opts.Key, id)
 
 	var srEntries []streamReaderEntry
