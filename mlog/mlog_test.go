@@ -3,6 +3,7 @@ package mlog
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	. "testing"
 	"time"
@@ -21,18 +22,17 @@ func TestTruncate(t *T) {
 
 func TestLogger(t *T) {
 	buf := new(bytes.Buffer)
-	h := defaultHandler(buf)
+	now := time.Now().UTC()
+	td, ts := now.Format(msgTimeFormat), fmt.Sprint(now.UnixNano())
 
-	l := NewLogger()
-	l.SetHandler(h)
-	l.testMsgWrittenCh = make(chan struct{}, 10)
+	l := NewLogger(&LoggerOpts{
+		MessageHandler: NewMessageHandler(buf),
+		Now:            func() time.Time { return now },
+	})
 
 	assertOut := func(expected string) massert.Assertion {
-		select {
-		case <-l.testMsgWrittenCh:
-		case <-time.After(1 * time.Second):
-			return massert.Errorf("waited too long for msg to write")
-		}
+		expected = strings.ReplaceAll(expected, "<TD>", td)
+		expected = strings.ReplaceAll(expected, "<TS>", ts)
 		out, err := buf.ReadString('\n')
 		return massert.All(
 			massert.Nil(err),
@@ -40,41 +40,38 @@ func TestLogger(t *T) {
 		)
 	}
 
-	// Default max level should be INFO
-	l.Debug("foo")
-	l.Info("bar")
-	l.Warn("baz")
-	l.Error("buz")
-	massert.Require(t,
-		assertOut(`{"level":"INFO","descr":"bar"}`),
-		assertOut(`{"level":"WARN","descr":"baz"}`),
-		assertOut(`{"level":"ERROR","descr":"buz"}`),
-	)
-
 	ctx := context.Background()
 
-	l.SetMaxLevel(WarnLevel)
-	l.Debug("foo")
-	l.Info("bar")
-	l.Warn("baz")
-	l.Error("buz", mctx.Annotate(ctx, "a", "b", "c", "d"))
+	// Default max level should be INFO
+	l.Debug(ctx, "foo")
+	l.Info(ctx, "bar")
+	l.Warn(ctx, "baz")
+	l.Error(ctx, "buz")
 	massert.Require(t,
-		assertOut(`{"level":"WARN","descr":"baz"}`),
-		assertOut(`{"level":"ERROR","descr":"buz","annotations":{"a":"b","c":"d"}}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"WARN","descr":"baz","level_int":20}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"ERROR","descr":"buz","level_int":10}`),
 	)
 
-	l2 := l.Clone()
-	l2.SetMaxLevel(InfoLevel)
-	l2.SetHandler(func(msg Message) error {
-		msg.Description = strings.ToUpper(msg.Description)
-		return h(msg)
-	})
-	l2.Info("bar")
-	l2.Warn("baz")
-	l.Error("buz")
+	// annotate context
+	ctx = mctx.Annotate(ctx, "foo", "bar")
+	l.Info(ctx, "bar")
 	massert.Require(t,
-		assertOut(`{"level":"INFO","descr":"BAR"}`),
-		assertOut(`{"level":"WARN","descr":"BAZ"}`),
-		assertOut(`{"level":"ERROR","descr":"buz"}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30,"annotations":{"foo":"bar"}}`),
+	)
+
+	// add other annotations
+	l.Info(ctx, "bar", mctx.Annotations{
+		"foo": "BAR",
+	})
+	massert.Require(t,
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30,"annotations":{"foo":"BAR"}}`),
+	)
+
+	// add namespace
+	l = l.WithNamespace("ns")
+	l.Info(ctx, "bar")
+	massert.Require(t,
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","ns":["ns"],"descr":"bar","level_int":30,"annotations":{"foo":"bar"}}`),
 	)
 }

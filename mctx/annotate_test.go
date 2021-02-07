@@ -7,28 +7,37 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
 )
 
+type testAnnotator [2]string
+
+func (t testAnnotator) Annotate(aa Annotations) {
+	aa[t[0]] = t[1]
+}
+
 func TestAnnotate(t *T) {
 	ctx := context.Background()
 	ctx = Annotate(ctx, "a", "foo")
 	ctx = Annotate(ctx, "b", "bar")
-	ctx = Annotate(ctx, "b", "BAR")
+	ctx = WithAnnotator(ctx, testAnnotator{"b", "BAR"})
 
-	annotations := Annotations(ctx)
+	aa := Annotations{}
+	EvaluateAnnotations(ctx, aa)
+
 	massert.Require(t,
-		massert.Length(annotations, 2),
-		massert.HasValue(annotations, Annotation{Key: "a", Value: "foo"}),
-		massert.HasValue(annotations, Annotation{Key: "b", Value: "BAR"}),
+		massert.Equal(Annotations{
+			"a": "foo",
+			"b": "BAR",
+		}, aa),
 	)
 }
 
 func TestAnnotationsStringMap(t *T) {
 	type A int
 	type B int
-	aa := AnnotationSet{
-		{Key: 0, Value: "zero"},
-		{Key: 1, Value: "one"},
-		{Key: A(2), Value: "two"},
-		{Key: B(2), Value: "TWO"},
+	aa := Annotations{
+		0:    "zero",
+		1:    "one",
+		A(2): "two",
+		B(2): "TWO",
 	}
 
 	massert.Require(t,
@@ -48,11 +57,14 @@ func TestMergeAnnotations(t *T) {
 	ctxB = Annotate(ctxB, 1, "ONE", 2, "TWO")
 
 	ctx := MergeAnnotations(ctxA, ctxB)
+	aa := Annotations{}
+	EvaluateAnnotations(ctx, aa)
+
 	err := massert.Equal(map[string]string{
 		"0": "ZERO",
 		"1": "ONE",
 		"2": "TWO",
-	}, Annotations(ctx).StringMap()).Assert()
+	}, aa.StringMap()).Assert()
 	if err != nil {
 		t.Fatal(err)
 	}

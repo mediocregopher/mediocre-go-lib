@@ -1,4 +1,6 @@
-module github.com/mediocregopher/mediocre-go-lib
+module github.com/mediocregopher/mediocre-go-lib/v2
+
+go 1.15
 
 require (
 	cloud.google.com/go v0.36.0
