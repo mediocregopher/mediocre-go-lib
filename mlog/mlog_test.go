@@ -3,13 +3,14 @@ package mlog
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	. "testing"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
-	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
+	"github.com/mediocregopher/mediocre-go-lib/v2/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/v2/mtest/massert"
 )
 
 func TestTruncate(t *T) {
@@ -45,12 +46,12 @@ func TestLogger(t *T) {
 	// Default max level should be INFO
 	l.Debug(ctx, "foo")
 	l.Info(ctx, "bar")
-	l.Warn(ctx, "baz")
-	l.Error(ctx, "buz")
+	l.Warn(ctx, "baz", errors.New("ERR"))
+	l.Error(ctx, "buz", errors.New("ERR"))
 	massert.Require(t,
 		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30}`),
-		assertOut(`{"td":"<TD>","ts":<TS>,"level":"WARN","descr":"baz","level_int":20}`),
-		assertOut(`{"td":"<TD>","ts":<TS>,"level":"ERROR","descr":"buz","level_int":10}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"WARN","descr":"baz: ERR","level_int":20}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"ERROR","descr":"buz: ERR","level_int":10}`),
 	)
 
 	// annotate context
@@ -58,14 +59,6 @@ func TestLogger(t *T) {
 	l.Info(ctx, "bar")
 	massert.Require(t,
 		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30,"annotations":{"foo":"bar"}}`),
-	)
-
-	// add other annotations
-	l.Info(ctx, "bar", mctx.Annotations{
-		"foo": "BAR",
-	})
-	massert.Require(t,
-		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30,"annotations":{"foo":"BAR"}}`),
 	)
 
 	// add namespace

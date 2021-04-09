@@ -10,6 +10,7 @@ package mlog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -17,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/v2/mctx"
 )
 
 // Null is an instance of Logger which will write all Messages to /dev/null.
@@ -98,7 +99,6 @@ type Message struct {
 	Context context.Context
 	Level
 	Description string
-	Annotators  []mctx.Annotator
 }
 
 // FullMessage extends Message to contain loggable properties not provided
@@ -159,11 +159,6 @@ func (h *messageHandler) Handle(msg FullMessage) error {
 	h.l.Lock()
 	defer h.l.Unlock()
 
-	mctx.EvaluateAnnotations(msg.Context, h.aa)
-	for _, annotator := range msg.Annotators {
-		annotator.Annotate(h.aa)
-	}
-
 	msgJSON := messageJSON{
 		TimeDate:    msg.Time.UTC().Format(msgTimeFormat),
 		Timestamp:   msg.Time.UnixNano(),
@@ -171,7 +166,7 @@ func (h *messageHandler) Handle(msg FullMessage) error {
 		LevelInt:    msg.Level.Int(),
 		Namespace:   msg.Namespace,
 		Description: msg.Description,
-		Annotations: h.aa.StringMap(),
+		Annotations: mctx.EvaluateAnnotations(msg.Context, h.aa).StringMap(),
 	}
 
 	for k := range h.aa {
@@ -294,8 +289,7 @@ func (l *Logger) Log(msg Message) {
 	}
 
 	if err := l.opts.MessageHandler.Handle(fullMsg); err != nil {
-		// TODO log the error
-		go l.Error(context.Background(), "MessageHandler.Handle returned error")
+		go l.Error(context.Background(), "MessageHandler.Handle returned error", err)
 		return
 	}
 
@@ -310,32 +304,41 @@ func mkMsg(ctx context.Context, lvl Level, descr string, annotators ...mctx.Anno
 		Context:     ctx,
 		Level:       lvl,
 		Description: descr,
-		Annotators:  annotators,
 	}
 }
 
 // Debug logs a LevelDebug message.
-func (l *Logger) Debug(ctx context.Context, descr string, annotators ...mctx.Annotator) {
-	l.Log(mkMsg(ctx, LevelDebug, descr, annotators...))
+func (l *Logger) Debug(ctx context.Context, descr string) {
+	l.Log(mkMsg(ctx, LevelDebug, descr))
 }
 
 // Info logs a LevelInfo message.
-func (l *Logger) Info(ctx context.Context, descr string, annotators ...mctx.Annotator) {
-	l.Log(mkMsg(ctx, LevelInfo, descr, annotators...))
+func (l *Logger) Info(ctx context.Context, descr string) {
+	l.Log(mkMsg(ctx, LevelInfo, descr))
 }
 
-// Warn logs a LevelWarn message.
-func (l *Logger) Warn(ctx context.Context, descr string, annotators ...mctx.Annotator) {
-	l.Log(mkMsg(ctx, LevelWarn, descr, annotators...))
+// WarnString logs a LevelWarn message which is only a string.
+func (l *Logger) WarnString(ctx context.Context, descr string) {
+	l.Log(mkMsg(ctx, LevelWarn, descr))
 }
 
-// Error logs a LevelError message.
-func (l *Logger) Error(ctx context.Context, descr string, annotators ...mctx.Annotator) {
-	l.Log(mkMsg(ctx, LevelError, descr, annotators...))
+// Warn logs a LevelWarn message, including information from the given error.
+func (l *Logger) Warn(ctx context.Context, descr string, err error) {
+	l.Log(mkMsg(ctx, LevelWarn, fmt.Sprintf("%s: %s", descr, err)))
+}
+
+// ErrorString logs a LevelError message which is only a string.
+func (l *Logger) ErrorString(ctx context.Context, descr string) {
+	l.Log(mkMsg(ctx, LevelError, descr))
+}
+
+// Error logs a LevelError message, including information from the given error.
+func (l *Logger) Error(ctx context.Context, descr string, err error) {
+	l.Log(mkMsg(ctx, LevelError, fmt.Sprintf("%s: %s", descr, err)))
 }
 
 // Fatal logs a LevelFatal message. A Fatal message automatically stops the
 // process with an os.Exit(1) if the default MessageHandler is used.
-func (l *Logger) Fatal(ctx context.Context, descr string, annotators ...mctx.Annotator) {
-	l.Log(mkMsg(ctx, LevelFatal, descr, annotators...))
+func (l *Logger) Fatal(ctx context.Context, descr string) {
+	l.Log(mkMsg(ctx, LevelFatal, descr))
 }

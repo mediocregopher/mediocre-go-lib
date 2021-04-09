@@ -1,16 +1,7 @@
 # mediocre-go-lib
 
 This is a collection of packages which I use across many of my personal
-projects. All packages intended to be used start with an `m`, packages not
-starting with `m` are for internal use within this set of packages.
-
-## Usage notes
-
-* In general, all checking of equality of errors, e.g. `err == io.EOF`, done on
-  errors returned from the packages in this project should be done using
-  `merr.Equal`, e.g. `merr.Equal(err, io.EOF)`. The `merr` package is used to
-  wrap errors and embed further metadata in them, like stack traces and so
-  forth.
+projects.
 
 ## Styleguide
 

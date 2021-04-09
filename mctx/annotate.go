@@ -136,7 +136,15 @@ func (aa Annotations) StringSlice(sorted bool) [][2]string {
 // via Annotate(With) on this Context and its ancestors, and sets those
 // key/values on the given Annotations. If a key was set twice then only the
 // most recent value is included.
-func EvaluateAnnotations(ctx context.Context, aa Annotations) {
+//
+// For convenience the passed in Annotations is returned from this function, and
+// if nil is given as the Annotations value then an Annotations will be
+// allocated and returned.
+func EvaluateAnnotations(ctx context.Context, aa Annotations) Annotations {
+	if aa == nil {
+		aa = Annotations{}
+	}
+
 	tmp := Annotations{}
 	for el, _ := ctx.Value(ctxKeyAnnotation(0)).(*el); el != nil; el = el.prev {
 		el.annotator.Annotate(tmp)
@@ -148,6 +156,7 @@ func EvaluateAnnotations(ctx context.Context, aa Annotations) {
 			delete(tmp, k)
 		}
 	}
+	return aa
 }
 
 //

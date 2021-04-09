@@ -4,7 +4,7 @@ import (
 	"context"
 	. "testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
+	"github.com/mediocregopher/mediocre-go-lib/v2/mtest/massert"
 )
 
 type testAnnotator [2]string

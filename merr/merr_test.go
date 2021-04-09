@@ -3,14 +3,15 @@ package merr
 import (
 	"context"
 	"errors"
-	. "testing"
+	"fmt"
+	"testing"
 
-	"github.com/mediocregopher/mediocre-go-lib/mctx"
-	"github.com/mediocregopher/mediocre-go-lib/mtest/massert"
+	"github.com/mediocregopher/mediocre-go-lib/v2/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/v2/mtest/massert"
 )
 
-func TestError(t *T) {
-	massert.Require(t, massert.Nil(Wrap(nil)))
+func TestError(t *testing.T) {
+	massert.Require(t, massert.Nil(Wrap(context.Background(), nil)))
 
 	ctx := mctx.Annotate(context.Background(),
 		"a", "aaa aaa\n",
@@ -18,87 +19,142 @@ func TestError(t *T) {
 		"d\t", "weird key but ok")
 
 	{
-		e := New("foo", ctx)
+		e := New(ctx, "foo")
 		exp := `foo
 	* a: aaa aaa
 	* c: 
 		ccc
 		ccc
 	* d: weird key but ok
-	* errLoc: merr/merr_test.go:21`
+	* line: merr/merr_test.go:22`
 		massert.Require(t, massert.Equal(exp, e.Error()))
 	}
 
 	{
-		e := Wrap(errors.New("foo"), ctx)
+		e := Wrap(ctx, errors.New("foo"))
 		exp := `foo
 	* a: aaa aaa
 	* c: 
 		ccc
 		ccc
 	* d: weird key but ok
-	* errLoc: merr/merr_test.go:33`
+	* line: merr/merr_test.go:34`
 		massert.Require(t, massert.Equal(exp, e.Error()))
 	}
 }
 
-func TestBase(t *T) {
-	errFoo, errBar := errors.New("foo"), errors.New("bar")
-	erFoo := Wrap(errFoo)
-	massert.Require(t,
-		massert.Nil(Base(nil)),
-		massert.Equal(errFoo, Base(erFoo)),
-		massert.Equal(errBar, Base(errBar)),
-		massert.Not(massert.Equal(errFoo, erFoo)),
-		massert.Not(massert.Equal(errBar, Base(erFoo))),
-		massert.Equal(true, Equal(errFoo, erFoo)),
-		massert.Equal(false, Equal(errBar, erFoo)),
-	)
-}
+func TestAs(t *testing.T) {
+	ctxA := mctx.Annotate(context.Background(), "a", "1")
+	ctxB := mctx.Annotate(context.Background(), "b", "2")
+	errFoo := errors.New("foo")
 
-func TestValue(t *T) {
-	massert.Require(t,
-		massert.Nil(WithValue(nil, "foo", "bar")),
-		massert.Nil(Value(nil, "foo")),
-	)
+	type test struct {
+		in    error
+		expAs error
+		expIs error
+	}
 
-	e1 := New("foo")
-	e1 = WithValue(e1, "a", "A")
-	e2 := WithValue(errors.New("bar"), "a", "A")
-	massert.Require(t,
-		massert.Equal("A", Value(e1, "a")),
-		massert.Equal("A", Value(e2, "a")),
-	)
+	tests := []test{
+		{
+			in:    nil,
+			expAs: nil,
+			expIs: nil,
+		},
+		{
+			in:    errors.New("bar"),
+			expAs: nil,
+		},
+		{
+			in: Error{
+				Err:        errFoo,
+				Ctx:        ctxA,
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			},
+			expAs: Error{
+				Err:        errFoo,
+				Ctx:        ctxA,
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			},
+			expIs: errFoo,
+		},
+		{
+			in: fmt.Errorf("bar: %w", Error{
+				Err:        errFoo,
+				Ctx:        ctxA,
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			}),
+			expAs: Error{
+				Err:        errFoo,
+				Ctx:        ctxA,
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			},
+			expIs: errFoo,
+		},
+		{
+			in: Wrap(ctxB, Error{
+				Err:        errFoo,
+				Ctx:        ctxA,
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			}),
+			expAs: Error{
+				Err: Error{
+					Err:        errFoo,
+					Ctx:        ctxA,
+					Stacktrace: Stacktrace{frames: []uintptr{666}},
+				},
+				Ctx:        mctx.MergeAnnotations(ctxA, ctxB),
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			},
+			expIs: errFoo,
+		},
+		{
+			in: Wrap(ctxB, fmt.Errorf("%w", Error{
+				Err:        errFoo,
+				Ctx:        ctxA,
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			})),
+			expAs: Error{
+				Err: fmt.Errorf("%w", Error{
+					Err:        errFoo,
+					Ctx:        ctxA,
+					Stacktrace: Stacktrace{frames: []uintptr{666}},
+				}),
+				Ctx:        mctx.MergeAnnotations(ctxA, ctxB),
+				Stacktrace: Stacktrace{frames: []uintptr{666}},
+			},
+			expIs: errFoo,
+		},
+	}
 
-	e3 := WithValue(e2, "a", "AAA")
-	massert.Require(t,
-		massert.Equal("A", Value(e1, "a")),
-		massert.Equal("A", Value(e2, "a")),
-		massert.Equal("AAA", Value(e3, "a")),
-	)
-}
+	for i, test := range tests {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			var in Error
+			ok := errors.As(test.in, &in)
 
-func mkErr(ctx context.Context, err error) error {
-	return Wrap(err, ctx)
-}
+			massert.Require(t, massert.Comment(
+				massert.Equal(test.expAs != nil, ok),
+				"test.in:%#v ok:%v", test.in, ok,
+			))
 
-func TestCtx(t *T) {
-	ctxA := mctx.Annotate(context.Background(), "0", "ZERO", "1", "one")
-	ctxB := mctx.Annotate(context.Background(), "1", "ONE", "2", "TWO")
+			if test.expAs == nil {
+				return
+			}
 
-	// use mkErr so that it's easy to test that the stack info isn't overwritten
-	// when Wrap is called with ctxB.
-	e := mkErr(ctxA, errors.New("hello"))
-	e = Wrap(e, ctxB)
+			expAs := test.expAs.(Error)
 
-	err := massert.Equal(map[string]string{
-		"0":      "ZERO",
-		"1":      "ONE",
-		"2":      "TWO",
-		"err":    "hello",
-		"errLoc": "merr/merr_test.go:82",
-	}, mctx.Annotations(Context(e)).StringMap()).Assert()
-	if err != nil {
-		t.Fatal(err)
+			inAA := mctx.EvaluateAnnotations(in.Ctx, nil)
+			expAsAA := mctx.EvaluateAnnotations(expAs.Ctx, nil)
+			in.Ctx = nil
+			expAs.Ctx = nil
+
+			massert.Require(t,
+				massert.Equal(expAsAA, inAA),
+				massert.Equal(expAs, in),
+				massert.Comment(
+					massert.Equal(true, errors.Is(test.in, test.expIs)),
+					"errors.Is(\ntest.in:%#v,\ntest.expIs:%#v,\n)", test.in, test.expIs,
+				),
+			)
+		})
 	}
 }

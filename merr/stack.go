@@ -12,11 +12,16 @@ import (
 // stored when embedding stack traces in errors.
 var MaxStackSize = 50
 
-type stackKey int
-
 // Stacktrace represents a stack trace at a particular point in execution.
 type Stacktrace struct {
 	frames []uintptr
+}
+
+func newStacktrace(skip int) Stacktrace {
+	stackSlice := make([]uintptr, MaxStackSize+skip)
+	// incr skip once for newStacktrace, and once for runtime.Callers
+	l := runtime.Callers(skip+2, stackSlice)
+	return Stacktrace{frames: stackSlice[:l]}
 }
 
 // Frame returns the first frame in the stack.
@@ -70,36 +75,4 @@ func (s Stacktrace) FullString() string {
 		panic(err)
 	}
 	return sb.String()
-}
-
-func setStack(er *err, skip int) {
-	stackSlice := make([]uintptr, MaxStackSize+skip)
-	// incr skip once for WithStack, and once for runtime.Callers
-	l := runtime.Callers(skip+2, stackSlice)
-	er.attr[stackKey(0)] = Stacktrace{frames: stackSlice[:l]}
-}
-
-// WithStack returns an error with the current stacktrace embedded in it (as a
-// Stacktrace type). If skip is non-zero it will skip that many frames from the
-// top of the stack. The frame containing the WithStack call itself is always
-// excluded.
-//
-// This call always overwrites any previously existing stack information on the
-// error, as opposed to Wrap which only does so if the error didn't already have
-// any.
-func WithStack(e error, skip int) error {
-	er := wrap(e, true)
-	setStack(er, skip+1)
-	return er
-}
-
-func getStack(er *err) (Stacktrace, bool) {
-	stack, ok := er.attr[stackKey(0)].(Stacktrace)
-	return stack, ok
-}
-
-// Stack returns the Stacktrace instance which was embedded by Wrap/WrapSkip, or
-// false if none ever was.
-func Stack(e error) (Stacktrace, bool) {
-	return getStack(wrap(e, false))
 }
