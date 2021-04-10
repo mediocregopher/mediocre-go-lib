@@ -41,9 +41,14 @@ type Error struct {
 
 // Error implements the method for the error interface.
 func (e Error) Error() string {
-	sb := strBuilderPool.Get().(*strings.Builder)
-	defer putStrBuilder(sb)
-	sb.WriteString(strings.TrimSpace(e.Err.Error()))
+	return e.Err.Error()
+}
+
+// FullError returns an error string which includes contextual annotations and
+// stacktrace information.
+func (e Error) FullError() string {
+	sb := new(strings.Builder)
+	sb.WriteString(strings.TrimSpace(e.Error()))
 
 	annotations := make(mctx.Annotations)
 	mctx.EvaluateAnnotations(e.Ctx, annotations)

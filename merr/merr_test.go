@@ -10,7 +10,7 @@ import (
 	"github.com/mediocregopher/mediocre-go-lib/v2/mtest/massert"
 )
 
-func TestError(t *testing.T) {
+func TestFullError(t *testing.T) {
 	massert.Require(t, massert.Nil(Wrap(context.Background(), nil)))
 
 	ctx := mctx.Annotate(context.Background(),
@@ -27,7 +27,7 @@ func TestError(t *testing.T) {
 		ccc
 	* d: weird key but ok
 	* line: merr/merr_test.go:22`
-		massert.Require(t, massert.Equal(exp, e.Error()))
+		massert.Require(t, massert.Equal(exp, e.(Error).FullError()))
 	}
 
 	{
@@ -39,90 +39,95 @@ func TestError(t *testing.T) {
 		ccc
 	* d: weird key but ok
 	* line: merr/merr_test.go:34`
-		massert.Require(t, massert.Equal(exp, e.Error()))
+		massert.Require(t, massert.Equal(exp, e.(Error).FullError()))
 	}
 }
 
-func TestAs(t *testing.T) {
+func TestAsIsError(t *testing.T) {
+	testST := newStacktrace(0)
+
 	ctxA := mctx.Annotate(context.Background(), "a", "1")
 	ctxB := mctx.Annotate(context.Background(), "b", "2")
 	errFoo := errors.New("foo")
 
 	type test struct {
-		in    error
-		expAs error
-		expIs error
+		in     error
+		expAs  error
+		expIs  error
+		expStr string
 	}
 
 	tests := []test{
 		{
-			in:    nil,
-			expAs: nil,
-			expIs: nil,
+			in: nil,
 		},
 		{
-			in:    errors.New("bar"),
-			expAs: nil,
+			in:     errors.New("bar"),
+			expStr: "bar",
 		},
 		{
 			in: Error{
 				Err:        errFoo,
 				Ctx:        ctxA,
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			},
 			expAs: Error{
 				Err:        errFoo,
 				Ctx:        ctxA,
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			},
-			expIs: errFoo,
+			expIs:  errFoo,
+			expStr: "foo",
 		},
 		{
 			in: fmt.Errorf("bar: %w", Error{
 				Err:        errFoo,
 				Ctx:        ctxA,
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			}),
 			expAs: Error{
 				Err:        errFoo,
 				Ctx:        ctxA,
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			},
-			expIs: errFoo,
+			expIs:  errFoo,
+			expStr: "bar: foo",
 		},
 		{
 			in: Wrap(ctxB, Error{
 				Err:        errFoo,
 				Ctx:        ctxA,
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			}),
 			expAs: Error{
 				Err: Error{
 					Err:        errFoo,
 					Ctx:        ctxA,
-					Stacktrace: Stacktrace{frames: []uintptr{666}},
+					Stacktrace: testST,
 				},
 				Ctx:        mctx.MergeAnnotations(ctxA, ctxB),
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			},
-			expIs: errFoo,
+			expIs:  errFoo,
+			expStr: "foo",
 		},
 		{
-			in: Wrap(ctxB, fmt.Errorf("%w", Error{
+			in: Wrap(ctxB, fmt.Errorf("bar: %w", Error{
 				Err:        errFoo,
 				Ctx:        ctxA,
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			})),
 			expAs: Error{
-				Err: fmt.Errorf("%w", Error{
+				Err: fmt.Errorf("bar: %w", Error{
 					Err:        errFoo,
 					Ctx:        ctxA,
-					Stacktrace: Stacktrace{frames: []uintptr{666}},
+					Stacktrace: testST,
 				}),
 				Ctx:        mctx.MergeAnnotations(ctxA, ctxB),
-				Stacktrace: Stacktrace{frames: []uintptr{666}},
+				Stacktrace: testST,
 			},
-			expIs: errFoo,
+			expIs:  errFoo,
+			expStr: "bar: foo",
 		},
 	}
 
@@ -154,6 +159,7 @@ func TestAs(t *testing.T) {
 					massert.Equal(true, errors.Is(test.in, test.expIs)),
 					"errors.Is(\ntest.in:%#v,\ntest.expIs:%#v,\n)", test.in, test.expIs,
 				),
+				massert.Equal(test.expStr, test.in.Error()),
 			)
 		})
 	}

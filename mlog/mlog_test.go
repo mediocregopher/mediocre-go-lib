@@ -50,8 +50,8 @@ func TestLogger(t *T) {
 	l.Error(ctx, "buz", errors.New("ERR"))
 	massert.Require(t,
 		assertOut(`{"td":"<TD>","ts":<TS>,"level":"INFO","descr":"bar","level_int":30}`),
-		assertOut(`{"td":"<TD>","ts":<TS>,"level":"WARN","descr":"baz: ERR","level_int":20}`),
-		assertOut(`{"td":"<TD>","ts":<TS>,"level":"ERROR","descr":"buz: ERR","level_int":10}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"WARN","descr":"baz","level_int":20,"annotations":{"errMsg":"ERR"}}`),
+		assertOut(`{"td":"<TD>","ts":<TS>,"level":"ERROR","descr":"buz","level_int":10,"annotations":{"errMsg":"ERR"}}`),
 	)
 
 	// annotate context

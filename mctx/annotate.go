@@ -178,3 +178,17 @@ func MergeAnnotations(ctx context.Context, ctxs ...context.Context) context.Cont
 	}
 	return context.WithValue(ctx, ctxKeyAnnotation(0), &el{annotator: aa})
 }
+
+type ctxAnnotator struct {
+	ctx context.Context
+}
+
+func (ca ctxAnnotator) Annotate(aa Annotations) {
+	EvaluateAnnotations(ca.ctx, aa)
+}
+
+// ContextAsAnnotator will return an Annotator which, when evaluated, will
+// call EvaluateAnnotations on the given Context.
+func ContextAsAnnotator(ctx context.Context) Annotator {
+	return ctxAnnotator{ctx}
+}

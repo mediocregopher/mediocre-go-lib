@@ -10,7 +10,7 @@ package mlog
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -19,7 +19,10 @@ import (
 	"time"
 
 	"github.com/mediocregopher/mediocre-go-lib/v2/mctx"
+	"github.com/mediocregopher/mediocre-go-lib/v2/merr"
 )
+
+type mlogAnnotation string
 
 // Null is an instance of Logger which will write all Messages to /dev/null.
 var Null = NewLogger(&LoggerOpts{
@@ -299,12 +302,28 @@ func (l *Logger) Log(msg Message) {
 	}
 }
 
-func mkMsg(ctx context.Context, lvl Level, descr string, annotators ...mctx.Annotator) Message {
+func mkMsg(ctx context.Context, lvl Level, descr string) Message {
 	return Message{
 		Context:     ctx,
 		Level:       lvl,
 		Description: descr,
 	}
+}
+
+func mkErrMsg(ctx context.Context, lvl Level, descr string, err error) Message {
+	var e merr.Error
+	if !errors.As(err, &e) {
+		ctx = mctx.Annotate(ctx, mlogAnnotation("errMsg"), err.Error())
+		return mkMsg(ctx, lvl, descr)
+	}
+
+	ctx = mctx.Annotate(ctx,
+		mlogAnnotation("errMsg"), err.Error(),
+		mlogAnnotation("errCtx"), mctx.ContextAsAnnotator(e.Ctx),
+		mlogAnnotation("errLine"), e.Stacktrace.String(),
+	)
+
+	return mkMsg(ctx, lvl, descr)
 }
 
 // Debug logs a LevelDebug message.
@@ -324,7 +343,7 @@ func (l *Logger) WarnString(ctx context.Context, descr string) {
 
 // Warn logs a LevelWarn message, including information from the given error.
 func (l *Logger) Warn(ctx context.Context, descr string, err error) {
-	l.Log(mkMsg(ctx, LevelWarn, fmt.Sprintf("%s: %s", descr, err)))
+	l.Log(mkErrMsg(ctx, LevelWarn, descr, err))
 }
 
 // ErrorString logs a LevelError message which is only a string.
@@ -334,7 +353,7 @@ func (l *Logger) ErrorString(ctx context.Context, descr string) {
 
 // Error logs a LevelError message, including information from the given error.
 func (l *Logger) Error(ctx context.Context, descr string, err error) {
-	l.Log(mkMsg(ctx, LevelError, fmt.Sprintf("%s: %s", descr, err)))
+	l.Log(mkErrMsg(ctx, LevelError, descr, err))
 }
 
 // Fatal logs a LevelFatal message. A Fatal message automatically stops the
