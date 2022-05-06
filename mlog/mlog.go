@@ -356,8 +356,15 @@ func (l *Logger) Error(ctx context.Context, descr string, err error) {
 	l.Log(mkErrMsg(ctx, LevelError, descr, err))
 }
 
+// FatalString logs a LevelFatal message which is only a string. A Fatal message
+// automatically stops the process with an os.Exit(1) if the default
+// MessageHandler is used.
+func (l *Logger) FatalString(ctx context.Context, descr string) {
+	l.Log(mkMsg(ctx, LevelFatal, descr))
+}
+
 // Fatal logs a LevelFatal message. A Fatal message automatically stops the
 // process with an os.Exit(1) if the default MessageHandler is used.
-func (l *Logger) Fatal(ctx context.Context, descr string) {
-	l.Log(mkMsg(ctx, LevelFatal, descr))
+func (l *Logger) Fatal(ctx context.Context, descr string, err error) {
+	l.Log(mkErrMsg(ctx, LevelFatal, descr, err))
 }
