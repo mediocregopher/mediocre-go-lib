@@ -290,6 +290,12 @@ func (l *Logger) WithMaxLevel(level int) *Logger {
 	return l
 }
 
+// MaxLevel returns the Logger's maximum level which it will log (see MaxLevel
+// in LoggerOpts, and the WithMaxLevel method).
+func (l *Logger) MaxLevel() int {
+	return l.opts.MaxLevel
+}
+
 // Log can be used to manually log a message of some custom defined Level.
 //
 // If the Level is a fatal (Int() < 0) then calling this will never return,
