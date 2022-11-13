@@ -257,11 +257,19 @@ func (l *Logger) Close() error {
 }
 
 func (l *Logger) clone() *Logger {
-	l2 := *l
-	l2.l = new(sync.RWMutex)
-	l2.ns = make([]string, len(l.ns), len(l.ns)+1)
+
+	l2 := &Logger{
+		opts: &LoggerOpts{
+			MessageHandler: l.opts.MessageHandler,
+			MaxLevel:       l.opts.MaxLevel,
+			Now:            l.opts.Now,
+		},
+		l:  new(sync.RWMutex),
+		ns: make([]string, len(l.ns), len(l.ns)+1),
+	}
+
 	copy(l2.ns, l.ns)
-	return &l2
+	return l2
 }
 
 // WithNamespace returns a clone of the Logger with the given value appended to
@@ -273,9 +281,18 @@ func (l *Logger) WithNamespace(name string) *Logger {
 	return l
 }
 
+// WithMaxLevel returns a clone of the Logger with the given MaxLevel set as the
+// value for the maximum log level which will be output (see MaxLevel in
+// LoggerOpts).
+func (l *Logger) WithMaxLevel(level int) *Logger {
+	l = l.clone()
+	l.opts.MaxLevel = level
+	return l
+}
+
 // Log can be used to manually log a message of some custom defined Level.
 //
-// If the Level is a fatal (Uint() == 0) then calling this will never return,
+// If the Level is a fatal (Int() < 0) then calling this will never return,
 // and the process will have os.Exit(1) called.
 func (l *Logger) Log(msg Message) {
 	l.l.RLock()
