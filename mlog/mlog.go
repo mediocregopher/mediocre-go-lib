@@ -4,14 +4,11 @@
 // The log methods take in a message string and a Context. The Context can be
 // loaded with additional annotations which will be included in the log entry as
 // well (see mctx package).
-//
 package mlog
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -110,84 +107,6 @@ type FullMessage struct {
 	Message
 	Time      time.Time
 	Namespace []string
-}
-
-// MessageHandler is a type which can process Messages in some way.
-//
-// NOTE that Logger does not handle thread-safety, that must be done inside the
-// MessageHandler if necessary.
-type MessageHandler interface {
-	Handle(FullMessage) error
-
-	// Sync flushes any buffered data to the handler's output, e.g. a file or
-	// network connection. If the handler doesn't buffer data then this will be
-	// a no-op.
-	Sync() error
-}
-
-type messageHandler struct {
-	l   sync.Mutex
-	out io.Writer
-	enc *json.Encoder
-	aa  mctx.Annotations
-}
-
-// NewMessageHandler initializes and returns a MessageHandler which will write
-// all messages to the given io.Writer in a thread-safe way. If the io.Writer
-// also implements a Sync or Flush method then that will be called when Sync is
-// called on the returned MessageHandler.
-func NewMessageHandler(out io.Writer) MessageHandler {
-	return &messageHandler{
-		out: out,
-		enc: json.NewEncoder(out),
-		aa:  mctx.Annotations{},
-	}
-}
-
-type messageJSON struct {
-	TimeDate    string   `json:"td"`
-	Timestamp   int64    `json:"ts"`
-	Level       string   `json:"level"`
-	Namespace   []string `json:"ns,omitempty"`
-	Description string   `json:"descr"`
-	LevelInt    int      `json:"level_int"`
-
-	// key -> value
-	Annotations map[string]string `json:"annotations,omitempty"`
-}
-
-const msgTimeFormat = "06/01/02 15:04:05.000000"
-
-func (h *messageHandler) Handle(msg FullMessage) error {
-	h.l.Lock()
-	defer h.l.Unlock()
-
-	msgJSON := messageJSON{
-		TimeDate:    msg.Time.UTC().Format(msgTimeFormat),
-		Timestamp:   msg.Time.UnixNano(),
-		Level:       msg.Level.String(),
-		LevelInt:    msg.Level.Int(),
-		Namespace:   msg.Namespace,
-		Description: msg.Description,
-		Annotations: mctx.EvaluateAnnotations(msg.Context, h.aa).StringMap(),
-	}
-
-	for k := range h.aa {
-		delete(h.aa, k)
-	}
-
-	return h.enc.Encode(msgJSON)
-}
-
-func (h *messageHandler) Sync() error {
-	h.l.Lock()
-	defer h.l.Unlock()
-	if s, ok := h.out.(interface{ Sync() error }); ok {
-		return s.Sync()
-	} else if f, ok := h.out.(interface{ Flush() error }); ok {
-		return f.Flush()
-	}
-	return nil
 }
 
 // LoggerOpts are optional parameters to NewLogger. All fields are optional. A
